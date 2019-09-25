@@ -1,5 +1,5 @@
 /*
-  A18_Decrypt - Archive unpacker for Gust (Koei/Tecmo) PC games 
+  A18_Decrypt - Archive unpacker for Gust (Koei/Tecmo) PC games
   Copyright © 2019 VitaSmith
   Copyright © 2018 Yuri Hime (shizukachan)
 
@@ -60,8 +60,6 @@ typedef struct {
 static pak_header header;
 static pak_entry64* entries = NULL;
 
-uint8_t blank_key[20] = { 0 };
-
 #if defined(_WIN32)
 static char* basename(const char* path)
 {
@@ -87,7 +85,7 @@ static bool create_path(char* path)
         if (pos > 0) {
             // Create parent dirs
             path[pos] = 0;
-            char* new_path = (char*)malloc(sizeof(char) * (strlen(path) + 1));
+            char* new_path = malloc(strlen(path) + 1);
             if (new_path == NULL) {
                 fprintf(stderr, "ERROR: Can't allocate path\n");
                 return false;
@@ -129,7 +127,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "Can't open PAK file '%s'", argv[1]);
         return -1;
     }
- 
+
     if (fread(&header, sizeof(header), 1, src) == 0) {
         fprintf(stderr, "Can't read header");
         return -1;
@@ -142,7 +140,7 @@ int main(int argc, char** argv)
     if (header.nb_entries > 16384) {
         fprintf(stderr, "WARNING: More than 16384 entries, is this a supported archive?\n");
     }
-    entries = (pak_entry64*)malloc(sizeof(pak_entry64) * header.nb_entries);
+    entries = (pak_entry64*)calloc(header.nb_entries, sizeof(pak_entry64));
     if (entries == NULL) {
         fprintf(stderr, "ERROR: Can't allocate entries\n");
         return -1;
@@ -153,19 +151,20 @@ int main(int argc, char** argv)
     char path[256];
     uint8_t* buf;
     bool skip_decode;
-    puts("OFFSET    SIZE     NAME");
+    printf("OFFSET    SIZE     NAME\n");
     for (uint32_t i = 0; i < header.nb_entries; i++) {
-        skip_decode = true;
-        for (int j = 0; j < 20; j++)
-            if (entries[i].key[j] != blank_key[j])
-                skip_decode = false;
+        int j;
+        // Speed up the check for a blank key by comparing 32-bit words
+        for (j = 0; (j < 5) && (((uint32_t*)entries[i].key)[j] == 0); j++);
+        skip_decode = (j >= 5);
         if (!skip_decode)
             decode((uint8_t*)entries[i].filename, entries[i].key, 128);
         for (size_t n = 0; n < strlen(entries[i].filename); n++) {
             if (entries[i].filename[n] == '\\')
                 entries[i].filename[n] = PATH_SEP;
         }
-        printf("%09" PRIx64 " %08x %s\n", entries[i].data_offset + file_data_offset, entries[i].length, entries[i].filename);
+        printf("%09" PRIx64 " %08x %s%c\n", entries[i].data_offset + file_data_offset,
+            entries[i].length, entries[i].filename, skip_decode?'*':' ');
         strcpy(path, (char*)entries[i].filename + 1);
         for (size_t n = strlen(path); n > 0; n--) {
             if (path[n] == PATH_SEP) {
@@ -184,7 +183,11 @@ int main(int argc, char** argv)
             continue;
         }
         fseek64(src, entries[i].data_offset + file_data_offset, SEEK_SET);
-        buf = (unsigned char*)malloc(sizeof(unsigned char) * entries[i].length);
+        buf = malloc(entries[i].length);
+        if (buf == NULL) {
+            fprintf(stderr, "ERROR: Can't allocate entries\n");
+            return -1;
+        }
         fread(buf, 1, entries[i].length, src);
         if (!skip_decode)
             decode(buf, entries[i].key, entries[i].length);
