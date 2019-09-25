@@ -72,7 +72,7 @@ bool create_path(char* path)
         }
         // Create node:
         result = result && CreateDirectoryA((LPCSTR)path, NULL);
-    } else if (FILE_ATTRIBUTE_DIRECTORY != attr) {
+    } else if (!(attr & FILE_ATTRIBUTE_DIRECTORY)) {
         // Object already exists, but is not a dir
         SetLastError(ERROR_FILE_EXISTS);
     }
