@@ -23,21 +23,23 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <errno.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#endif
 
 #if defined(_WIN32)
+#include <windows.h>
 #define ftell64 _ftelli64
 #define fseek64 _fseeki64
+#if !defined(S_ISDIR)
+#define S_ISDIR(ST_MODE) (((ST_MODE) & _S_IFMT) == _S_IFDIR)
+#endif
+#define CREATE_DIR(path) CreateDirectoryA(path, NULL)
+#define PATH_SEP '\\'
 #else
 #define ftell64 ftello64
 #define fseek64 fseeko64
+#define CREATE_DIR(path) (mkdir(path, 0755) == 0)
+#define PATH_SEP '/'
 #endif
 
 typedef struct {
@@ -61,44 +63,15 @@ static pak_entry64* entries = NULL;
 uint8_t blank_key[20] = { 0 };
 
 #if defined(_WIN32)
-bool create_path(char* path)
+static char* basename(const char* path)
 {
-    bool result = true;
-    DWORD attr = GetFileAttributesA(path);
-    if (attr == 0xFFFFFFFF) {
-        // Directory doesn't exist, create it
-        size_t pos = 0;
-        for (size_t n = strlen(path); n > 0; n--) {
-            if (path[n] == '\\') {
-                pos = n;
-                break;
-            }
-        }
-        if (pos > 0) {
-            // Create parent dirs
-            path[pos] = 0;
-            char* new_path = (char*)malloc(sizeof(char) * (strlen(path) + 1));
-            if (new_path == NULL) {
-                fprintf(stderr, "ERROR: Can't allocate path\n");
-                return false;
-            }
-            strcpy(new_path, path);
-            result = create_path(new_path);
-            free(new_path);
-            path[pos] = '\\';
-        }
-        // Create node:
-        result = result && CreateDirectoryA((LPCSTR)path, NULL);
-    } else if (!(attr & FILE_ATTRIBUTE_DIRECTORY)) {
-        // Object already exists, but is not a dir
-        SetLastError(ERROR_FILE_EXISTS);
-        result = false;
-    }
-
-    return result;
+    static char app_name[64];
+    _splitpath_s(path, NULL, 0, NULL, 0, app_name, sizeof(app_name), NULL, 0);
+    return app_name;
 }
-#else
-bool create_path(char* path)
+#endif
+
+static bool create_path(char* path)
 {
     bool result = true;
     struct stat st;
@@ -106,7 +79,7 @@ bool create_path(char* path)
         // Directory doesn't exist, create it
         size_t pos = 0;
         for (size_t n = strlen(path); n > 0; n--) {
-            if (path[n] == '/') {
+            if (path[n] == PATH_SEP) {
                 pos = n;
                 break;
             }
@@ -122,21 +95,20 @@ bool create_path(char* path)
             strcpy(new_path, path);
             result = create_path(new_path);
             free(new_path);
-            path[pos] = '/';
+            path[pos] = PATH_SEP;
         }
-        // Create node:
-        result = result && (mkdir(path, 0755) == 0);
+        // Create node
+        if (result)
+            result = CREATE_DIR(path);
     } else if (!S_ISDIR(st.st_mode)) {
-        // Object already exists, but is not a dir
-        errno = ENOTDIR;
-        result = false;
+        fprintf(stderr, "ERROR: '%s' exists but isn't a directory\n", path);
+        return false;
     }
 
     return result;
 }
-#endif
 
-__inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
+static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 {
     for (uint32_t i = 0; i < length; i++)
         a[i] ^= k[i % 20];
@@ -145,21 +117,16 @@ __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 int main(int argc, char** argv)
 {
     if (argc != 2) {
-#if defined(_WIN32)
-        char app_name[64];
-        _splitpath_s(argv[0], NULL, 0, NULL, 0, app_name, sizeof(app_name), NULL, 0);
-#else
-        char* app_name = basename(argv[0]);
-#endif
         printf("%s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
             "Dumps the Gust PAK format archive to the current directory.\n"
             "If unpacked to the game directory, you can remove the .pak file\n"
-            "and it will use the unpacked assets. Have fun, modders!\n", app_name, app_name);
+            "and it will use the unpacked assets. Have fun, modders!\n",
+            basename(argv[0]), basename(argv[0]));
         return 0;
     }
     FILE* src = fopen(argv[1], "rb");
     if (src == NULL) {
-        fprintf(stderr, "Can't open PAK file");
+        fprintf(stderr, "Can't open PAK file '%s'", argv[1]);
         return -1;
     }
  
@@ -183,10 +150,10 @@ int main(int argc, char** argv)
 
     fread(entries, sizeof(pak_entry64), header.nb_entries, src);
     int64_t file_data_offset = ftell64(src);
-    puts("OFFSET    SIZE     NAME");
     char path[256];
     uint8_t* buf;
     bool skip_decode;
+    puts("OFFSET    SIZE     NAME");
     for (uint32_t i = 0; i < header.nb_entries; i++) {
         skip_decode = true;
         for (int j = 0; j < 20; j++)
@@ -194,28 +161,26 @@ int main(int argc, char** argv)
                 skip_decode = false;
         if (!skip_decode)
             decode((uint8_t*)entries[i].filename, entries[i].key, 128);
-#if !defined(_WIN32)
         for (size_t n = 0; n < strlen(entries[i].filename); n++) {
             if (entries[i].filename[n] == '\\')
-                entries[i].filename[n] = '/';
+                entries[i].filename[n] = PATH_SEP;
         }
-#endif
         printf("%09" PRIx64 " %08x %s\n", entries[i].data_offset + file_data_offset, entries[i].length, entries[i].filename);
         strcpy(path, (char*)entries[i].filename + 1);
         for (size_t n = strlen(path); n > 0; n--) {
-            if ((path[n] == '\\') || (path[n] == '/')) {
+            if (path[n] == PATH_SEP) {
                 path[n] = 0;
                 break;
             }
         }
-        if (create_path(path) == false) {
-            fprintf(stderr, "Can't create path %s\n", path);
+        if (!create_path(path)) {
+            fprintf(stderr, "Can't create path '%s'\n", path);
             continue;
         }
         FILE* dst = NULL;
         dst = fopen((char*)(entries[i].filename + 1), "wb");
         if (dst == NULL) {
-            fprintf(stderr, "Can't open file %s\n", entries[i].filename + 1);
+            fprintf(stderr, "Can't create file '%s'\n", entries[i].filename + 1);
             continue;
         }
         fseek64(src, entries[i].data_offset + file_data_offset, SEEK_SET);
