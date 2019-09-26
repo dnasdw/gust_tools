@@ -1,5 +1,5 @@
 @echo off
-set APP_NAME=A18_Decrypt.exe
+set APP_NAME=Pak_Decrypt.exe
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
 cd /d "%~dp0"
 
@@ -10,6 +10,6 @@ set CL=%CL% /Ox
 rem set CL=%CL% /Od /Zi
 rem set LINK=%LINK% /DEBUG
 
-cl.exe A18_Decrypt.c /Fe%APP_NAME%
+cl.exe Pak_Decrypt.c /Fe%APP_NAME%
 if %ERRORLEVEL% equ 0 echo =^> %APP_NAME%
 pause

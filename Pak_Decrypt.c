@@ -42,6 +42,11 @@
 #define PATH_SEP '/'
 #endif
 
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#pragma pack(push, 1)
 typedef struct {
     uint32_t unknown1;
     uint32_t nb_entries;
@@ -53,12 +58,21 @@ typedef struct {
     char     filename[128];
     uint32_t length;
     uint8_t  key[20];
+    uint32_t data_offset;
+    uint32_t dummy;
+} pak_entry32;
+
+typedef struct {
+    char     filename[128];
+    uint32_t length;
+    uint8_t  key[20];
     uint64_t data_offset;
     uint64_t dummy;
 } pak_entry64;
+#pragma pack(pop)
 
 static pak_header header;
-static pak_entry64* entries = NULL;
+static pak_entry64* entries64 = NULL;
 
 #if defined(_WIN32)
 static char* basename(const char* path)
@@ -112,8 +126,12 @@ static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
         a[i] ^= k[i % 20];
 }
 
+// To handle either 32 and 64 bit PAK entries
+#define entry(i, m) (is_pak32 ? (((pak_entry32*)entries64)[i]).m : entries64[i].m)
+
 int main(int argc, char** argv)
 {
+    bool is_pak32 = false;
     if (argc != 2) {
         printf("%s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
             "Dumps the Gust PAK format archive to the current directory.\n"
@@ -140,32 +158,50 @@ int main(int argc, char** argv)
     if (header.nb_entries > 16384) {
         fprintf(stderr, "WARNING: More than 16384 entries, is this a supported archive?\n");
     }
-    entries = (pak_entry64*)calloc(header.nb_entries, sizeof(pak_entry64));
-    if (entries == NULL) {
+    entries64 = calloc(header.nb_entries, sizeof(pak_entry64));
+    if (entries64 == NULL) {
         fprintf(stderr, "ERROR: Can't allocate entries\n");
         return -1;
     }
 
-    fread(entries, sizeof(pak_entry64), header.nb_entries, src);
-    int64_t file_data_offset = ftell64(src);
+    fread(entries64, sizeof(pak_entry64), header.nb_entries, src);
+
+    // Detect if we are dealing with 32 or 64-bit pak entries by checking
+    // the data_offsets at the expected 32 and 64-bit struct location and
+    // adding the absolute value of the difference with last data_offset.
+    // The sum that is closest to zero tells us if we are dealing with a
+    // 32 or 64-bit PAK archive.
+    uint64_t sum[2] = { 0, 0 };
+    uint32_t val[2], last[2] = { 0, 0 };
+    for (uint32_t i = 0; i < min(header.nb_entries, 64); i++) {
+        val[0] = ((pak_entry32*)entries64)[i].data_offset;
+        val[1] = (uint32_t)(entries64[i].data_offset >> 32);
+        for (int j = 0; j < 2; j++) {
+            sum[j] += (val[j] > last[j]) ? val[j] - last[j] : last[j] - val[j];
+            last[j] = val[j];
+        }
+    }
+    is_pak32 = (sum[0] < sum[1]);
+    printf("Detected %s PAK format\n\n", is_pak32 ? "A17/32-bit" : "A18/64-bit");
+
     char path[256];
     uint8_t* buf;
     bool skip_decode;
+    int64_t file_data_offset = sizeof(pak_header) + header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
     printf("OFFSET    SIZE     NAME\n");
     for (uint32_t i = 0; i < header.nb_entries; i++) {
         int j;
-        // Speed up the check for a blank key by comparing 32-bit words
-        for (j = 0; (j < 5) && (((uint32_t*)entries[i].key)[j] == 0); j++);
-        skip_decode = (j >= 5);
+        for (j = 0; (j < 20) && (entry(i, key)[j] == 0); j++);
+        skip_decode = (j >= 20);
         if (!skip_decode)
-            decode((uint8_t*)entries[i].filename, entries[i].key, 128);
-        for (size_t n = 0; n < strlen(entries[i].filename); n++) {
-            if (entries[i].filename[n] == '\\')
-                entries[i].filename[n] = PATH_SEP;
+            decode((uint8_t*)entry(i, filename), entry(i, key), 128);
+        for (size_t n = 0; n < strlen(entry(i, filename)); n++) {
+            if (entry(i, filename)[n] == '\\')
+                entry(i, filename)[n] = PATH_SEP;
         }
-        printf("%09" PRIx64 " %08x %s%c\n", entries[i].data_offset + file_data_offset,
-            entries[i].length, entries[i].filename, skip_decode?'*':' ');
-        strcpy(path, (char*)entries[i].filename + 1);
+        printf("%09" PRIx64 " %08x %s%c\n", entry(i, data_offset) + file_data_offset,
+            entry(i, length), entry(i, filename), skip_decode?'*':' ');
+        strcpy(path, &entry(i, filename)[1]);
         for (size_t n = strlen(path); n > 0; n--) {
             if (path[n] == PATH_SEP) {
                 path[n] = 0;
@@ -177,25 +213,25 @@ int main(int argc, char** argv)
             continue;
         }
         FILE* dst = NULL;
-        dst = fopen((char*)(entries[i].filename + 1), "wb");
+        dst = fopen(&entry(i, filename)[1], "wb");
         if (dst == NULL) {
-            fprintf(stderr, "Can't create file '%s'\n", entries[i].filename + 1);
+            fprintf(stderr, "Can't create file '%s'\n", &entry(i, filename)[1]);
             continue;
         }
-        fseek64(src, entries[i].data_offset + file_data_offset, SEEK_SET);
-        buf = malloc(entries[i].length);
+        fseek64(src, entry(i, data_offset) + file_data_offset, SEEK_SET);
+        buf = malloc(entry(i, length));
         if (buf == NULL) {
             fprintf(stderr, "ERROR: Can't allocate entries\n");
             return -1;
         }
-        fread(buf, 1, entries[i].length, src);
+        fread(buf, 1, entry(i, length), src);
         if (!skip_decode)
-            decode(buf, entries[i].key, entries[i].length);
-        fwrite(buf, 1, entries[i].length, dst);
+            decode(buf, entry(i, key), entry(i, length));
+        fwrite(buf, 1, entry(i, length), dst);
         free(buf);
         fclose(dst);
     }
     fclose(src);
-    free(entries);
+    free(entries64);
     return 0;
 }

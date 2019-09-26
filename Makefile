@@ -4,8 +4,8 @@ else
   EXE :=
 endif
 
-BIN=A18_Decrypt${EXE}
-SRC=A18_Decrypt.c
+BIN=Pak_Decrypt${EXE}
+SRC=Pak_Decrypt.c
 OBJ=${SRC:.c=.o}
 DEP=${SRC:.c=.d}
 

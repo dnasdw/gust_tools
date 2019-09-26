@@ -11,7 +11,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\A18_Decrypt.c">
+    <ClCompile Include="..\Pak_Decrypt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

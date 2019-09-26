@@ -6,6 +6,7 @@
 *.o
 *.obj
 *.opendb
+*.pak
 *.suo
 *.vcxproj.filters
 *.vcxproj.user
