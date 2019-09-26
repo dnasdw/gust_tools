@@ -20,6 +20,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Pak_Decrypt.c" />
+    <ClCompile Include="..\util.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

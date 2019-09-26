@@ -12,13 +12,13 @@ rem set LINK=%LINK% /DEBUG
 
 echo.
 set APP_NAME=Pak_Decrypt
-cl.exe %APP_NAME%.c /Fe%APP_NAME%.exe
+cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%.exe
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%.exe
 
 echo.
 set APP_NAME=Lxr_Decrypt
-cl.exe %APP_NAME%.c puff.c /Fe%APP_NAME%
+cl.exe %APP_NAME%.c util.c puff.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 

@@ -21,6 +21,11 @@
   <ItemGroup>
     <ClCompile Include="..\Lxr_Decrypt.c" />
     <ClCompile Include="..\puff.c" />
+    <ClCompile Include="..\util.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\puff.h" />
+    <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

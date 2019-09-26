@@ -17,34 +17,13 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
-#if defined(_WIN32)
-#include <windows.h>
-#define ftell64 _ftelli64
-#define fseek64 _fseeki64
-#if !defined(S_ISDIR)
-#define S_ISDIR(ST_MODE) (((ST_MODE) & _S_IFMT) == _S_IFDIR)
-#endif
-#define CREATE_DIR(path) CreateDirectoryA(path, NULL)
-#define PATH_SEP '\\'
-#else
-#define ftell64 ftello64
-#define fseek64 fseeko64
-#define CREATE_DIR(path) (mkdir(path, 0755) == 0)
-#define PATH_SEP '/'
-#endif
-
-#ifndef min
-#define min(a,b) (((a) < (b)) ? (a) : (b))
-#endif
+#include "util.h"
 
 #pragma pack(push, 1)
 typedef struct {
@@ -73,52 +52,6 @@ typedef struct {
 
 static pak_header header;
 static pak_entry64* entries64 = NULL;
-
-#if defined(_WIN32)
-static char* basename(const char* path)
-{
-    static char app_name[64];
-    _splitpath_s(path, NULL, 0, NULL, 0, app_name, sizeof(app_name), NULL, 0);
-    return app_name;
-}
-#endif
-
-static bool create_path(char* path)
-{
-    bool result = true;
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        // Directory doesn't exist, create it
-        size_t pos = 0;
-        for (size_t n = strlen(path); n > 0; n--) {
-            if (path[n] == PATH_SEP) {
-                pos = n;
-                break;
-            }
-        }
-        if (pos > 0) {
-            // Create parent dirs
-            path[pos] = 0;
-            char* new_path = malloc(strlen(path) + 1);
-            if (new_path == NULL) {
-                fprintf(stderr, "ERROR: Can't allocate path\n");
-                return false;
-            }
-            strcpy(new_path, path);
-            result = create_path(new_path);
-            free(new_path);
-            path[pos] = PATH_SEP;
-        }
-        // Create node
-        if (result)
-            result = CREATE_DIR(path);
-    } else if (!S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "ERROR: '%s' exists but isn't a directory\n", path);
-        return false;
-    }
-
-    return result;
-}
 
 static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 {

@@ -22,28 +22,30 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "util.h"
 #include "puff.h"
-
-#if defined (_MSC_VER)
-#include <stdlib.h>
-#pragma intrinsic(_byteswap_ulong)
-#define bswap_uint32 _byteswap_ulong
-#else
-#define bswap_uint32 __builtin_bswap32
-#endif
-#define getbe32(p) bswap_uint32(*(const uint32_t*)(const uint8_t*)(p))
 
 #define ADLER32_MOD 65521
 #define ZLIB_DEFLATE_METHOD 8
 
-#if defined(_WIN32)
-static char* basename(const char* path)
-{
-    static char app_name[64];
-    _splitpath_s(path, NULL, 0, NULL, 0, app_name, sizeof(app_name), NULL, 0);
-    return app_name;
-}
-#endif
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t total_size;
+    uint32_t table_offset;
+    uint32_t table_size;
+    uint32_t nb_files;
+    uint32_t unknown;
+} lxr_header;
+
+typedef struct {
+    uint32_t offset;
+    uint32_t size;
+    // TODO: There might be some versions where this is 0x40
+    char     filename[0x30];
+} lxr_entry;
+#pragma pack(pop)
 
 static uint32_t adler32(const uint8_t* data, size_t size)
 {
@@ -160,7 +162,7 @@ int main(int argc, char** argv)
         } while (zsize != 0);
         lxr_size = pos;
 
-#define DECOMPRESS_ONLY
+//#define DECOMPRESS_ONLY
 #ifdef DECOMPRESS_ONLY
         FILE* dst = NULL;
         *is_compressed = 0;
@@ -187,6 +189,34 @@ int main(int argc, char** argv)
             fprintf(stderr, "Can't read uncompressed data");
             goto out;
         }
+    }
+
+    // Now that have an uncompressed .elixir file, extract the files
+    assert(strstr(argv[1], ".elixir") != NULL);
+    *(strstr(argv[1], ".elixir")) = 0;
+    if (!create_path(argv[1]))
+        goto out;
+
+    lxr_header* hdr = (lxr_header*)buf;
+
+    // TODO: Sanity checks on header
+    char path[256];
+    printf("OFFSET   SIZE     NAME\n");
+    for (uint32_t i = 0; i < hdr->nb_files; i++) {
+        lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
+        snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
+        FILE* dst = fopen(path, "wb");
+        if (dst == NULL) {
+            fprintf(stderr, "Can't create file '%s'\n", path);
+            goto out;
+        }
+        if (fwrite(&buf[entry->offset], 1, entry->size, dst) != entry->size) {
+            fprintf(stderr, "Can't write file '%s'\n", path);
+            fclose(dst);
+            goto out;
+        }
+        printf("%08x %08x %s\n", entry->offset, entry->size, path);
+        fclose(dst);
     }
 
     r = 0;

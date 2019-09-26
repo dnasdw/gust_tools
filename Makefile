@@ -6,8 +6,8 @@ endif
 
 BIN1=Pak_Decrypt
 BIN2=Lxr_Decrypt
-SRC1=Pak_Decrypt.c
-SRC2=Lxr_Decrypt.c puff.c
+SRC1=Pak_Decrypt.c util.c
+SRC2=Lxr_Decrypt.c util.c puff.c
 OBJ1=${SRC1:.c=.o}
 DEP1=${SRC1:.c=.d}
 OBJ2=${SRC2:.c=.o}

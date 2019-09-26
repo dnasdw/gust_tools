@@ -2,6 +2,7 @@
 *.d
 *.db
 *.exe
+*.g1m
 *.gz
 *.elixir
 *.VC.*
@@ -11,6 +12,7 @@
 *.opendb
 *.pak
 *.suo
+*.swg
 *.vcxproj.filters
 *.vcxproj.user
 *.zip
