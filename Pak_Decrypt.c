@@ -76,12 +76,12 @@ int main(int argc, char** argv)
 
     FILE* src = fopen(argv[1], "rb");
     if (src == NULL) {
-        fprintf(stderr, "Can't open PAK file '%s'", argv[1]);
+        fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[1]);
         return -1;
     }
 
     if (fread(&header, sizeof(header), 1, src) != 1) {
-        fprintf(stderr, "Can't read header");
+        fprintf(stderr, "ERROR: Can't read header");
         return -1;
     }
 
@@ -147,13 +147,13 @@ int main(int argc, char** argv)
             }
         }
         if (!create_path(path)) {
-            fprintf(stderr, "Can't create path '%s'\n", path);
+            fprintf(stderr, "ERROR: Can't create path '%s'\n", path);
             goto out;
         }
         FILE* dst = NULL;
         dst = fopen(&entry(i, filename)[1], "wb");
         if (dst == NULL) {
-            fprintf(stderr, "Can't create file '%s'\n", &entry(i, filename)[1]);
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", &entry(i, filename)[1]);
             goto out;
         }
         fseek64(src, entry(i, data_offset) + file_data_offset, SEEK_SET);
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
             decode(buf, entry(i, key), entry(i, length));
 
         if (fwrite(buf, 1, entry(i, length), dst) != entry(i, length)) {
-            fprintf(stderr, "Can't write file '%s'\n", &entry(i, filename)[1]);
+            fprintf(stderr, "ERROR: Can't write file '%s'\n", &entry(i, filename)[1]);
             fclose(dst);
             goto out;
         }

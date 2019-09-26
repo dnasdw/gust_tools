@@ -25,8 +25,10 @@
 #include "util.h"
 #include "puff.h"
 
-#define ADLER32_MOD 65521
-#define ZLIB_DEFLATE_METHOD 8
+#define ADLER32_MOD             65521
+#define ZLIB_DEFLATE_METHOD     8
+#define ELIXIR_MAGIC            0x45415243     // "CRAE"
+#define DEFAULT_CHUNK_SIZE      0x4000
 
 #pragma pack(push, 1)
 typedef struct {
@@ -36,13 +38,12 @@ typedef struct {
     uint32_t table_offset;
     uint32_t table_size;
     uint32_t nb_files;
-    uint32_t unknown;
+    uint32_t unknown;           // Can be 0x0 or 0xA
 } lxr_header;
 
 typedef struct {
     uint32_t offset;
     uint32_t size;
-    // TODO: There might be some versions where this is 0x40
     char     filename[0x30];
 } lxr_entry;
 #pragma pack(pop)
@@ -123,10 +124,17 @@ int main(int argc, char** argv)
 
     FILE* src = fopen(argv[1], "rb");
     if (src == NULL) {
-        fprintf(stderr, "Can't open elixir file '%s'", argv[1]);
+        fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[1]);
         return -1;
     }
 
+    // Some elixir.gz files are actually uncompressed versions
+    if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
+        fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[1]);
+        goto out;
+    }
+    if (zsize == ELIXIR_MAGIC)
+        is_compressed = NULL;
     fseek(src, 0L, SEEK_END);
     size_t lxr_size = ftell(src);
     fseek(src, 0L, SEEK_SET);
@@ -140,7 +148,7 @@ int main(int argc, char** argv)
         size_t pos = 0;
         while (1) {
             if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
-                fprintf(stderr, "Can't read compressed stream size");
+                fprintf(stderr, "ERROR: Can't read compressed stream size");
                 goto out;
             }
             if (zsize == 0)
@@ -149,7 +157,7 @@ int main(int argc, char** argv)
             if (zbuf == NULL)
                 goto out;
             if (fread(zbuf, 1, zsize, src) != zsize) {
-                fprintf(stderr, "Can't read compressed stream");
+                fprintf(stderr, "ERROR: Can't read compressed stream");
                 free(zbuf);
                 goto out;
             }
@@ -168,11 +176,11 @@ int main(int argc, char** argv)
         *is_compressed = 0;
         dst = fopen(argv[1], "wb");
         if (dst == NULL) {
-            fprintf(stderr, "Can't create file '%s'\n", argv[1]);
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
             goto out;
         }
         if (fwrite(buf, 1, lxr_size, dst) != lxr_size) {
-            fprintf(stderr, "Can't write file '%s'\n", argv[1]);
+            fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[1]);
             fclose(dst);
             goto out;
         }
@@ -186,7 +194,7 @@ int main(int argc, char** argv)
         if (buf == NULL)
             goto out;
         if (fread(buf, 1, lxr_size, src) != lxr_size) {
-            fprintf(stderr, "Can't read uncompressed data");
+            fprintf(stderr, "ERROR: Can't read uncompressed data");
             goto out;
         }
     }
@@ -198,20 +206,35 @@ int main(int argc, char** argv)
         goto out;
 
     lxr_header* hdr = (lxr_header*)buf;
+    if (hdr->magic != ELIXIR_MAGIC) {
+        fprintf(stderr, "ERROR: Not an elixir file (bad magic)\n");
+        goto out;
+    }
+    if (hdr->version != 1) {
+        fprintf(stderr, "ERROR: Invalid elixir version (0x%08X)\n", hdr->version);
+        goto out;
+    }
+    if (sizeof(lxr_header) + hdr->nb_files * sizeof(lxr_entry) + hdr->total_size != lxr_size) {
+        fprintf(stderr, "ERROR: File size mismatch\n");
+        goto out;
+    }
 
-    // TODO: Sanity checks on header
     char path[256];
     printf("OFFSET   SIZE     NAME\n");
     for (uint32_t i = 0; i < hdr->nb_files; i++) {
         lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
+        assert(entry->offset + entry->size <= lxr_size);
+        // Ignore "dummy" entries
+        if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
+            continue;
         snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
         FILE* dst = fopen(path, "wb");
         if (dst == NULL) {
-            fprintf(stderr, "Can't create file '%s'\n", path);
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
             goto out;
         }
         if (fwrite(&buf[entry->offset], 1, entry->size, dst) != entry->size) {
-            fprintf(stderr, "Can't write file '%s'\n", path);
+            fprintf(stderr, "ERROR: Can't write file '%s'\n", path);
             fclose(dst);
             goto out;
         }
