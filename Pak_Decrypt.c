@@ -131,7 +131,7 @@ static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 
 int main(int argc, char** argv)
 {
-    bool is_pak32 = false;
+    int r = -1;
     if (argc != 2) {
         printf("%s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
             "Dumps the Gust PAK format archive to the current directory.\n"
@@ -140,6 +140,7 @@ int main(int argc, char** argv)
             basename(argv[0]), basename(argv[0]));
         return 0;
     }
+
     FILE* src = fopen(argv[1], "rb");
     if (src == NULL) {
         fprintf(stderr, "Can't open PAK file '%s'", argv[1]);
@@ -164,7 +165,11 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    fread(entries64, sizeof(pak_entry64), header.nb_entries, src);
+    if (fread(entries64, sizeof(pak_entry64), header.nb_entries, src) != header.nb_entries) {
+        fprintf(stderr, "ERROR: Can't read PAK header\n");
+        free(entries64);
+        return -1;
+    }
 
     // Detect if we are dealing with 32 or 64-bit pak entries by checking
     // the data_offsets at the expected 32 and 64-bit struct location and
@@ -181,11 +186,11 @@ int main(int argc, char** argv)
             last[j] = val[j];
         }
     }
-    is_pak32 = (sum[0] < sum[1]);
+    bool is_pak32 = (sum[0] < sum[1]);
     printf("Detected %s PAK format\n\n", is_pak32 ? "A17/32-bit" : "A18/64-bit");
 
     char path[256];
-    uint8_t* buf;
+    uint8_t* buf = NULL;
     bool skip_decode;
     int64_t file_data_offset = sizeof(pak_header) + header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
     printf("OFFSET    SIZE     NAME\n");
@@ -210,28 +215,43 @@ int main(int argc, char** argv)
         }
         if (!create_path(path)) {
             fprintf(stderr, "Can't create path '%s'\n", path);
-            continue;
+            goto out;
         }
         FILE* dst = NULL;
         dst = fopen(&entry(i, filename)[1], "wb");
         if (dst == NULL) {
             fprintf(stderr, "Can't create file '%s'\n", &entry(i, filename)[1]);
-            continue;
+            goto out;
         }
         fseek64(src, entry(i, data_offset) + file_data_offset, SEEK_SET);
         buf = malloc(entry(i, length));
         if (buf == NULL) {
             fprintf(stderr, "ERROR: Can't allocate entries\n");
-            return -1;
+            fclose(dst);
+            goto out;
         }
-        fread(buf, 1, entry(i, length), src);
+        if (fread(buf, 1, entry(i, length), src) != entry(i, length)) {
+            fprintf(stderr, "ERROR: Can't read archive\n");
+            fclose(dst);
+            goto out;
+        }
         if (!skip_decode)
             decode(buf, entry(i, key), entry(i, length));
-        fwrite(buf, 1, entry(i, length), dst);
+
+        if (fwrite(buf, 1, entry(i, length), dst) != entry(i, length)) {
+            fprintf(stderr, "Can't write file '%s'\n", &entry(i, filename)[1]);
+            fclose(dst);
+            goto out;
+        }
         free(buf);
+        buf = NULL;
         fclose(dst);
     }
-    fclose(src);
+    r = 0;
+
+out:
+    free(buf);
     free(entries64);
-    return 0;
+    fclose(src);
+    return r;
 }
