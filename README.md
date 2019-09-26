@@ -9,10 +9,10 @@ Usage
 
 **IMPORTANT: BACK UP ALL GAME ARCHIVES AND FOLDERS BEFORE RUNNING THE UNPACKER**
 
-The unpacker extracts files to the current directory so if files/directories already exist, they **will be overwritten**.
+The unpackers extract files to the current directory so if files/directories already exist, they **will be overwritten**.
 Furthermore, if files or directories already exist, it will be **difficult to tell original from unpacked files**.
 
-To unpack an archive to the current directory, just use the command `Pak_decrypt PACK####.pak` where `PACK####.pak` is the archive you wish to unpack.
+To unpack an archive to the current directory, just use the command `gunpak PACK####.pak` where `PACK####.pak` is the archive you wish to unpack.
 
 Alternatively, if running on Windows, you can simply copy the executable to your game directory and drop a `.pak` file onto it.
 
@@ -22,10 +22,10 @@ You must rename or delete the original archive, else the game will still use ass
 Notes
 -----
 
-`Pak_decrypt` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it detects "A17" (32-bit) and "A18" (64-bit) formats
+`gunpak` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it detects "A17" (32-bit) and "A18" (64-bit) formats
 automatically. It should therefore works with all of the Atelier PC ports (including Atelier Sophie) as well as Blue Reflection's archives.
 
-You should also be able to compile and run `Pak_decrypt` on Linux (provided you are using a Little Endian machine).
+You should also be able to compile and run `gunpak` on Linux (provided you are using a Little Endian machine).
 
 Performance
 ===========

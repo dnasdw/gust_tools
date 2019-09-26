@@ -19,17 +19,20 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Pak_Decrypt.c" />
+    <ClCompile Include="..\gunlxr.c" />
+    <ClCompile Include="..\miniz_tinfl.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\miniz_common.h" />
+    <ClInclude Include="..\miniz_tinfl.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{207C1918-F4CE-4285-A1C0-1BA91085D15B}</ProjectGuid>
+    <ProjectGuid>{A7809FFE-461D-48F3-BA53-6A92B3E374D0}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>Pak_Decrypt</RootNamespace>
+    <RootNamespace>gunlxr</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

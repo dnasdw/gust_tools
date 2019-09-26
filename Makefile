@@ -4,10 +4,10 @@ else
   EXE :=
 endif
 
-BIN1=Pak_Decrypt
-BIN2=Lxr_Decrypt
-SRC1=Pak_Decrypt.c util.c
-SRC2=Lxr_Decrypt.c util.c puff.c
+BIN1=gunpak
+BIN2=gunlxr
+SRC1=gunpak.c util.c
+SRC2=gunlxr.c util.c miniz_tinfl.c
 OBJ1=${SRC1:.c=.o}
 DEP1=${SRC1:.c=.d}
 OBJ2=${SRC2:.c=.o}

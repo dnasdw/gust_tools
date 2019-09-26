@@ -11,10 +11,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Lxr_Decrypt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\puff.c">
+    <ClCompile Include="..\gunpak.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\util.c">
@@ -22,9 +19,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\puff.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\util.h">
       <Filter>Header Files</Filter>
     </ClInclude>

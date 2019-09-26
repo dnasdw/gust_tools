@@ -1,5 +1,5 @@
 @echo off
-set APP_NAME=Pak_Decrypt.exe
+set APP_NAME=gunpak.exe
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
 cd /d "%~dp0"
 
@@ -11,14 +11,14 @@ rem set CL=%CL% /Od /Zi
 rem set LINK=%LINK% /DEBUG
 
 echo.
-set APP_NAME=Pak_Decrypt
+set APP_NAME=gunpak
 cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%.exe
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%.exe
 
 echo.
-set APP_NAME=Lxr_Decrypt
-cl.exe %APP_NAME%.c util.c puff.c /Fe%APP_NAME%
+set APP_NAME=gunlxr
+cl.exe %APP_NAME%.c util.c miniz_tinfl.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 

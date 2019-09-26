@@ -11,15 +11,24 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Pak_Decrypt.c">
+    <ClCompile Include="..\gunlxr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\util.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\miniz_tinfl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\miniz_tinfl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\miniz_common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

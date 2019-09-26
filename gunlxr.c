@@ -23,10 +23,14 @@
 #include <assert.h>
 
 #include "util.h"
-#include "puff.h"
 
-#define ADLER32_MOD             65521
-#define ZLIB_DEFLATE_METHOD     8
+#define MINIZ_NO_STDIO
+#define MINIZ_NO_ARCHIVE_APIS
+#define MINIZ_NO_TIME
+#define MINIZ_NO_ZLIB_APIS
+#define MINIZ_NO_MALLOC
+#include "miniz_tinfl.h"
+
 #define ELIXIR_MAGIC            0x45415243     // "CRAE"
 #define DEFAULT_CHUNK_SIZE      0x4000
 
@@ -47,60 +51,6 @@ typedef struct {
     char     filename[0x30];
 } lxr_entry;
 #pragma pack(pop)
-
-static uint32_t adler32(const uint8_t* data, size_t size)
-{
-    uint32_t a = 1;
-    uint32_t b = 0;
-
-    for (size_t i = 0; i < size; i++) {
-        a = (a + data[i]) % ADLER32_MOD;
-        b = (b + a) % ADLER32_MOD;
-    }
-
-    return (b << 16) | a;
-}
-
-static size_t zlib_inflate(const uint8_t* in, size_t inlen, uint8_t* out, size_t outlen)
-{
-    assert(out != NULL);
-
-    if (inlen < 2 + 4)
-        return 0;
-
-    if (((in[0] << 8) + in[1]) % 31 != 0) {
-        fprintf(stderr, "ERROR: Corrupted zlib header\n");
-        return 0;
-    }
-
-    if ((in[0] & 0xf) != ZLIB_DEFLATE_METHOD) {
-        fprintf(stderr, "ERROR: Only zlib deflate method is supported\n");
-        return 0;
-    }
-
-    if (in[1] & (1 << 5)) {
-        fprintf(stderr, "ERROR: Dictionary is not supported\n");
-        return 0;
-    }
-
-    in += 2;
-
-    size_t slen = inlen - 2 - 4;
-    size_t dlen = outlen;
-
-    int r = puff(0, out, &dlen, in, &slen);
-    if (r != 0) {
-        fprintf(stderr, "ERROR: Decompression failed (code %d)\n", r);
-        return 0;
-    }
-
-    if (adler32(out, dlen) != getbe32(in + slen)) {
-        fprintf(stderr, "ERROR: Invalid checksum\n");
-        return 0;
-    }
-
-    return dlen;
-}
 
 int main(int argc, char** argv)
 {
@@ -163,9 +113,12 @@ int main(int argc, char** argv)
             }
 
             // TODO: realloc if we don't have enough buffer
-            size_t s = zlib_inflate(zbuf, zsize, &buf[pos], lxr_size - pos);
-            if (s == 0)
+            size_t s = tinfl_decompress_mem_to_mem(&buf[pos], lxr_size - pos, zbuf, zsize,
+                TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32);
+            if (s == 0) {
+                fprintf(stderr, "ERROR: Can't decompress stream");
                 goto out;
+            }
             pos += s;
         } while (zsize != 0);
         lxr_size = pos;

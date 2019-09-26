@@ -19,19 +19,17 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Lxr_Decrypt.c" />
-    <ClCompile Include="..\puff.c" />
+    <ClCompile Include="..\gunpak.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\puff.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{A7809FFE-461D-48F3-BA53-6A92B3E374D0}</ProjectGuid>
+    <ProjectGuid>{207C1918-F4CE-4285-A1C0-1BA91085D15B}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>Lxr_Decrypt</RootNamespace>
+    <RootNamespace>gunpak</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
