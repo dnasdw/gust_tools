@@ -19,13 +19,14 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Pak_Decrypt.c" />
+    <ClCompile Include="..\Lxr_Decrypt.c" />
+    <ClCompile Include="..\puff.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{207C1918-F4CE-4285-A1C0-1BA91085D15B}</ProjectGuid>
+    <ProjectGuid>{A7809FFE-461D-48F3-BA53-6A92B3E374D0}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>Pak_Decrypt</RootNamespace>
+    <RootNamespace>Lxr_Decrypt</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

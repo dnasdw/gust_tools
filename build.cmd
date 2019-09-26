@@ -10,6 +10,17 @@ set CL=%CL% /Ox
 rem set CL=%CL% /Od /Zi
 rem set LINK=%LINK% /DEBUG
 
-cl.exe Pak_Decrypt.c /Fe%APP_NAME%
-if %ERRORLEVEL% equ 0 echo =^> %APP_NAME%
+echo.
+set APP_NAME=Pak_Decrypt
+cl.exe %APP_NAME%.c /Fe%APP_NAME%.exe
+if %ERRORLEVEL% neq 0 goto out
+echo =^> %APP_NAME%.exe
+
+echo.
+set APP_NAME=Lxr_Decrypt
+cl.exe %APP_NAME%.c puff.c /Fe%APP_NAME%
+if %ERRORLEVEL% neq 0 goto out
+echo =^> %APP_NAME%
+
+:out
 pause

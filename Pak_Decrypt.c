@@ -1,5 +1,5 @@
 /*
-  A18_Decrypt - Archive unpacker for Gust (Koei/Tecmo) PC games
+  Pak_Decrypt - Archive unpacker for Gust (Koei/Tecmo) PC games
   Copyright © 2019 VitaSmith
   Copyright © 2018 Yuri Hime (shizukachan)
 
@@ -147,7 +147,7 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    if (fread(&header, sizeof(header), 1, src) == 0) {
+    if (fread(&header, sizeof(header), 1, src) != 1) {
         fprintf(stderr, "Can't read header");
         return -1;
     }
