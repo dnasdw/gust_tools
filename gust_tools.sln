@@ -5,6 +5,7 @@ VisualStudioVersion = 16.0.29318.209
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gunpak", ".vs\gunpak.vcxproj", "{207C1918-F4CE-4285-A1C0-1BA91085D15B}"
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gunlxr", ".vs\gunlxr.vcxproj", "{A7809FFE-461D-48F3-BA53-6A92B3E374D0}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gung1t", ".vs\gung1t.vcxproj", "{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -30,6 +31,14 @@ Global
 		{A7809FFE-461D-48F3-BA53-6A92B3E374D0}.Release|x64.Build.0 = Release|x64
 		{A7809FFE-461D-48F3-BA53-6A92B3E374D0}.Release|x86.ActiveCfg = Release|Win32
 		{A7809FFE-461D-48F3-BA53-6A92B3E374D0}.Release|x86.Build.0 = Release|Win32
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Debug|x64.ActiveCfg = Debug|x64
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Debug|x64.Build.0 = Debug|x64
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Debug|x86.ActiveCfg = Debug|Win32
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Debug|x86.Build.0 = Debug|Win32
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Release|x64.ActiveCfg = Release|x64
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Release|x64.Build.0 = Release|x64
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Release|x86.ActiveCfg = Release|Win32
+		{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
