@@ -20,6 +20,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#pragma once
+
 #if defined(_WIN32)
 #include <windows.h>
 #define ftell64 _ftelli64
@@ -38,6 +40,9 @@
 
 #ifndef min
 #define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 
 #if defined(_WIN32)

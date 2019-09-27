@@ -1,5 +1,5 @@
 /*
-  Pak_Decrypt - Archive unpacker for Gust (Koei/Tecmo) PC games
+  Gunpak - Archive unpacker for Gust (Koei/Tecmo) PC games
   Copyright © 2019 VitaSmith
   Copyright © 2018 Yuri Hime (shizukachan)
 

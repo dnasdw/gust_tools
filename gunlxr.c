@@ -1,5 +1,5 @@
 /*
-  Lxr_Decrypt - Archive unpacker for Gust (Koei/Tecmo) .elixir[.gz] files
+  Gunlxr - Archive unpacker for Gust (Koei/Tecmo) .elixir[.gz] files
   Copyright © 2019 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@
 #define MINIZ_NO_MALLOC
 #include "miniz_tinfl.h"
 
-#define ELIXIR_MAGIC            0x45415243     // "CRAE"
+#define EARC_MAGIC              0x45415243  // "EARC"
 #define DEFAULT_CHUNK_SIZE      0x4000
 
 #pragma pack(push, 1)
@@ -66,11 +66,12 @@ int main(int argc, char** argv)
     }
 
     // Don't bother checking for case or if these extensions are really at the end
-    if (strstr(argv[1], ".elixir") == NULL) {
+    char* elixir_pos = strstr(argv[1], ".elixir");
+    if (elixir_pos == NULL) {
         fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");
         return -1;
     }
-    char* is_compressed = strstr(argv[1], ".gz");
+    char* gz_pos = strstr(argv[1], ".gz");
 
     FILE* src = fopen(argv[1], "rb");
     if (src == NULL) {
@@ -83,15 +84,15 @@ int main(int argc, char** argv)
         fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[1]);
         goto out;
     }
-    if (zsize == ELIXIR_MAGIC)
-        is_compressed = NULL;
+    if ((zsize == EARC_MAGIC) && (gz_pos != NULL))
+        gz_pos = NULL;
+
     fseek(src, 0L, SEEK_END);
     size_t lxr_size = ftell(src);
     fseek(src, 0L, SEEK_SET);
 
-    if (is_compressed != NULL) {
-        // Expect the decompressed data not to be larger than 32x the file size
-        lxr_size *= 32;
+    if (gz_pos != NULL) {
+        lxr_size *= 2;
         buf = malloc(lxr_size);
         if (buf == NULL)
             goto out;
@@ -111,8 +112,17 @@ int main(int argc, char** argv)
                 free(zbuf);
                 goto out;
             }
-
-            // TODO: realloc if we don't have enough buffer
+            // Elixirs are deflated using a constant chunk size which simplifies overflow handling
+            if (pos + DEFAULT_CHUNK_SIZE > lxr_size) {
+                lxr_size *= 2;
+                uint8_t* old_buf = buf;
+                buf = realloc(buf, lxr_size);
+                if (buf == NULL) {
+                    fprintf(stderr, "ERROR: Can't increase buffer size\n");
+                    buf = old_buf;
+                    goto out;
+                }
+            }
             size_t s = tinfl_decompress_mem_to_mem(&buf[pos], lxr_size - pos, zbuf, zsize,
                 TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32);
             if (s == 0) {
@@ -126,7 +136,7 @@ int main(int argc, char** argv)
 //#define DECOMPRESS_ONLY
 #ifdef DECOMPRESS_ONLY
         FILE* dst = NULL;
-        *is_compressed = 0;
+        *gz_pos = 0;
         dst = fopen(argv[1], "wb");
         if (dst == NULL) {
             fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
@@ -153,13 +163,12 @@ int main(int argc, char** argv)
     }
 
     // Now that have an uncompressed .elixir file, extract the files
-    assert(strstr(argv[1], ".elixir") != NULL);
-    *(strstr(argv[1], ".elixir")) = 0;
+    *elixir_pos = 0;
     if (!create_path(argv[1]))
         goto out;
 
     lxr_header* hdr = (lxr_header*)buf;
-    if (hdr->magic != ELIXIR_MAGIC) {
+    if (hdr->magic != EARC_MAGIC) {
         fprintf(stderr, "ERROR: Not an elixir file (bad magic)\n");
         goto out;
     }
