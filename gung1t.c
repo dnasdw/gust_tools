@@ -35,10 +35,10 @@ typedef struct {
     uint32_t    header_size;
     uint32_t    nb_textures;
     uint32_t    unknown;        // Usually 0xA
+    uint32_t    extra_size;     // Always 0
 } g1t_header;
 
-// This is followed by uint32_t flag_table[nb_textures] + padding up to
-// table_offset which contains the (uint32_t) size for each texture entry.
+// This is followed by uint32_t flag_table[nb_textures]
 
 typedef struct {
     uint8_t     discard : 4;
@@ -62,7 +62,7 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
 {
     if ((fd == NULL) || (width == 0) || (height == 0))
         return 0;
-    if ((format != DDS_FORMAT_DXT1) && (format != DDS_FORMAT_DXT3) && (format != DDS_FORMAT_DXT5))
+    if ((format < DDS_FORMAT_DXT1) && (format > DDS_FORMAT_BC7))
         return 0;
 
     DDS_HEADER header = { 0 };
@@ -72,17 +72,24 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
     header.width = width;
     header.ddspf.size = 32;
     header.ddspf.flags = DDS_FOURCC;
-    header.ddspf.fourCC[0] = 'D';
-    header.ddspf.fourCC[1] = 'X';
-    header.ddspf.fourCC[2] = 'T';
-    header.ddspf.fourCC[3] = '0' + (char)format;
+    header.ddspf.fourCC = get_fourCC(format);
     header.caps = DDS_SURFACE_FLAGS_TEXTURE;
     if (mipmaps != 0) {
         header.mipMapCount = mipmaps;
         header.flags |= DDS_HEADER_FLAGS_MIPMAP;
         header.caps |= DDS_SURFACE_FLAGS_MIPMAP;
     }
-    return fwrite(&header, sizeof(DDS_HEADER), 1, fd);
+    size_t r = fwrite(&header, sizeof(DDS_HEADER), 1, fd);
+    if (r != 1)
+        return r;
+    if (format == DDS_FORMAT_BC7) {
+        DDS_HEADER_DXT10 header10 = { 0 };
+        header10.dxgiFormat = DXGI_FORMAT_BC7_UNORM;
+        header10.resourceDimension = D3D10_RESOURCE_DIMENSION_TEXTURE2D;
+        header10.miscFlags2 = DDS_ALPHA_MODE_STRAIGHT;
+        r = fwrite(&header10, sizeof(DDS_HEADER_DXT10), 1, fd);
+    }
+    return r;
 }
 
 int main(int argc, char** argv)
@@ -144,9 +151,7 @@ int main(int argc, char** argv)
         goto out;
     }
 
-    g1t_pos[0] = '_';
-    g1t_pos[1] = 't';
-    g1t_pos[2] = 0;
+    g1t_pos[0] = 0;
     if (!create_path(argv[1]))
         goto out;
 
@@ -163,8 +168,10 @@ int main(int argc, char** argv)
         uint32_t texture_format, bits_per_pixel;
         switch (tex->type) {
         case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
+        case 0x08: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
         case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
         case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
+        case 0x5F: texture_format = DDS_FORMAT_BC7; bits_per_pixel = 8; break;
         default:
             fprintf(stderr, "ERROR: Unsupported texture type (0x%02X)\n", tex->type);
             continue;
