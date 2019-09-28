@@ -24,7 +24,7 @@ echo =^> %APP_NAME%
 
 echo.
 set APP_NAME=gung1t
-cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%
+cl.exe %APP_NAME%.c util.c parson.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 

@@ -23,9 +23,11 @@
 #include <assert.h>
 
 #include "util.h"
+#include "parson.h"
 #include "dds.h"
 
 #define G1TG_MAGIC              0x47315447  // "G1GT"
+#define G1T_TEX_EXTRA_FLAG      0x10000000
 
 #pragma pack(push, 1)
 typedef struct {
@@ -34,11 +36,11 @@ typedef struct {
     uint32_t    total_size;
     uint32_t    header_size;
     uint32_t    nb_textures;
-    uint32_t    unknown;        // Usually 0xA
+    uint32_t    flags;          // Usually 0xA
     uint32_t    extra_size;     // Always 0
 } g1t_header;
 
-// This is followed by uint32_t flag_table[nb_textures]
+// This is followed by uint32_t extra_flags[nb_textures]
 
 typedef struct {
     uint8_t     discard : 4;
@@ -50,12 +52,8 @@ typedef struct {
     uint32_t    flags;          // 0x10211000 or 0x00211000
 } g1t_tex_header;
 
-#define G1T_TEX_EXTRA_FLAG      0x10000000
+// May be followed by extra_data[]
 
-typedef struct {
-    uint32_t    size;
-    uint64_t    extra_flags;
-} g1t_tex_extra;
 #pragma pack(pop)
 
 static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t height, uint32_t mipmaps)
@@ -150,19 +148,48 @@ int main(int argc, char** argv)
             hdr->version[1], hdr->version[2], hdr->version[0], hdr->version[0]);
         goto out;
     }
+    if (hdr->extra_size != 0) {
+        fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
+        goto out;
+    }
+
+    uint32_t* offset_table = (uint32_t*)&buf[hdr->header_size];
+
+    // Keep the information required to recreate the archive in a JSON file
+    JSON_Value* json_val = json_value_init_object();
+    JSON_Object* json_obj = json_value_get_object(json_val);
+    json_object_set_string(json_obj, "name", argv[1]);
+    char version[5];
+    for (int i = 0; i < 4; i++)
+        version[i] = hdr->version[i];
+    version[4] = 0;
+    json_object_set_string(json_obj, "version", version);
+    json_object_set_number(json_obj, "nb_textures", hdr->nb_textures);
+    json_object_set_number(json_obj, "flags", hdr->flags);
+    json_object_set_number(json_obj, "extra_size", hdr->extra_size);
 
     g1t_pos[0] = 0;
     if (!create_path(argv[1]))
         goto out;
 
-//    uint32_t* flag_table = (uint32_t*)&buf[sizeof(hdr)];
-    uint32_t* offset_table = (uint32_t*)&buf[hdr->header_size];
-
     char path[256];
+    JSON_Value* json_flags_array_val = json_value_init_array();
+    JSON_Array* json_flags_array_obj = json_value_get_array(json_flags_array_val);
+    JSON_Value* json_textures_array_val = json_value_init_array();
+    JSON_Array* json_textures_array_obj = json_value_get_array(json_textures_array_val);
+
     printf("OFFSET   SIZE     NAME\n");
     for (uint32_t i = 0; i < hdr->nb_textures; i++) {
+        // There's an array of flags after the header
+        json_array_append_number(json_flags_array_obj, getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
         uint32_t pos = hdr->header_size + offset_table[i];
         g1t_tex_header* tex = (g1t_tex_header*) &buf[pos];
+        JSON_Value* json_texture_val = json_value_init_object();
+        JSON_Object* json_texture_obj = json_value_get_object(json_texture_val);
+        snprintf(path, sizeof(path), "%03d.dds", i);
+        json_object_set_string(json_texture_obj, "name", path);
+        json_object_set_number(json_texture_obj, "type", tex->type);
+        json_object_set_number(json_texture_obj, "flags", tex->flags);
         uint32_t width = 1 << tex->dx;
         uint32_t height = 1 << tex->dy;
         uint32_t texture_format, bits_per_pixel;
@@ -202,8 +229,17 @@ int main(int argc, char** argv)
         }
         pos += sizeof(g1t_tex_header);
         if (tex->flags & G1T_TEX_EXTRA_FLAG) {
-            uint32_t size = ((uint32_t*)buf)[pos/4];
+            uint32_t size = getle32(&buf[pos]);
             assert(pos + size < g1t_size);
+            if ((size == 0) || (size % 4 != 0)) {
+                fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%04x\n", size);
+            } else {
+                JSON_Value* json_extra_array_val = json_value_init_array();
+                JSON_Array* json_extra_array_obj = json_value_get_array(json_extra_array_val);
+                for (uint32_t j = 0; j < size; j += 4)
+                    json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
+                json_object_set_value(json_texture_obj, "extra_data", json_extra_array_val);
+            }
             pos += size;
         }
         if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
@@ -212,7 +248,14 @@ int main(int argc, char** argv)
             continue;
         }
         fclose(dst);
+        json_array_append_value(json_textures_array_obj, json_texture_val);
     }
+
+    json_object_set_value(json_obj, "extra_flags", json_flags_array_val);
+    json_object_set_value(json_obj, "textures", json_textures_array_val);
+    snprintf(path, sizeof(path), "%s%c.g1t", argv[1], PATH_SEP);
+    json_serialize_to_file_pretty(json_val, path);
+    json_value_free(json_val);
 
     r = 0;
 

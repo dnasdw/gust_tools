@@ -61,6 +61,25 @@ static __inline char* basename(const char* path)
 #else
 #define bswap_uint32 __builtin_bswap32
 #endif
-#define getbe32(p) bswap_uint32(*(const uint32_t*)(const uint8_t*)(p))
+
+static __inline uint32_t getle32(const void* p)
+{
+    return *(const uint32_t*)(const uint8_t*)(p);
+}
+
+static __inline uint32_t getbe32(const void* p)
+{
+    return bswap_uint32(getle32(p));
+}
+
+static __inline uint64_t getle64(const void* p)
+{
+    return (((uint64_t)getle32((void*)((uintptr_t)p + 4))) << 32) | getle32(p);
+}
+
+static __inline uint64_t getbe64(const void* p)
+{
+    return (((uint64_t)getbe32(p)) << 32) | getbe32((void*)((uintptr_t)p + 4));
+}
 
 bool create_path(char* path);
