@@ -1,5 +1,5 @@
 /*
-  Gung1t - DDS texture unpacker for Gust (Koei/Tecmo) .g1t files
+  gust_g1t - DDS texture unpacker for Gust (Koei/Tecmo) .g1t files
   Copyright © 2019 VitaSmith
 
   This program is free software: you can redistribute it and/or modify

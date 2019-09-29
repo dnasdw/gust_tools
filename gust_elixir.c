@@ -1,5 +1,5 @@
 /*
-  Gunlxr - Archive unpacker for Gust (Koei/Tecmo) .elixir[.gz] files
+  gust_elixir - Archive unpacker for Gust (Koei/Tecmo) .elixir[.gz] files
   Copyright © 2019 VitaSmith
 
   This program is free software: you can redistribute it and/or modify

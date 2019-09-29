@@ -1,5 +1,4 @@
 @echo off
-set APP_NAME=gunpak.exe
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
 cd /d "%~dp0"
 
@@ -11,19 +10,19 @@ rem set CL=%CL% /Od /Zi
 rem set LINK=%LINK% /DEBUG
 
 echo.
-set APP_NAME=gunpak
+set APP_NAME=gust_pak
 cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%.exe
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%.exe
 
 echo.
-set APP_NAME=gunlxr
+set APP_NAME=gust_elixir
 cl.exe %APP_NAME%.c util.c miniz_tinfl.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 
 echo.
-set APP_NAME=gung1t
+set APP_NAME=gust_g1t
 cl.exe %APP_NAME%.c util.c parson.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%

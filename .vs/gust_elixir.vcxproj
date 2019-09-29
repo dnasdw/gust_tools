@@ -19,20 +19,20 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\gung1t.c" />
-    <ClCompile Include="..\parson.c" />
+    <ClCompile Include="..\gust_elixir.c" />
+    <ClCompile Include="..\miniz_tinfl.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\dds.h" />
-    <ClInclude Include="..\parson.h" />
+    <ClInclude Include="..\miniz_common.h" />
+    <ClInclude Include="..\miniz_tinfl.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}</ProjectGuid>
+    <ProjectGuid>{A7809FFE-461D-48F3-BA53-6A92B3E374D0}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>gung1t</RootNamespace>
+    <RootNamespace>gust_elixir</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

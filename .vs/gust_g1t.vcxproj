@@ -19,17 +19,20 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\gunpak.c" />
+    <ClCompile Include="..\gust_g1t.c" />
+    <ClCompile Include="..\parson.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\dds.h" />
+    <ClInclude Include="..\parson.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{207C1918-F4CE-4285-A1C0-1BA91085D15B}</ProjectGuid>
+    <ProjectGuid>{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>gunpak</RootNamespace>
+    <RootNamespace>gust_g1t</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

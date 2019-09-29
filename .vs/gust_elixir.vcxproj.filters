@@ -11,7 +11,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\gunlxr.c">
+    <ClCompile Include="..\gust_elixir.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\util.c">
