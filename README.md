@@ -1,9 +1,9 @@
 # Gust Tools
 
 As set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
-[Atelier series](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
-[Blue Reflection](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/), 
-[Toukiden series](https://store.steampowered.com/search/?term=toukiden&category1=998), ...
+[_Atelier series_](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
+[_Blue Reflection_](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/),
+[_Toukiden series_](https://store.steampowered.com/search/?term=toukiden&category1=998), ...
 
 Utilities
 =========
@@ -11,12 +11,15 @@ Utilities
 * `gust_pak`: Decrypts and unpacks a Gust `.pak` archive to the current directory.
 * `gust_elixir`: Unpacks a Gust `.elixir[.gz]` archive into a subdirectory.
 * `gust_g1t`: Unpacks a Gust `.g1t` texture archive into a subdirectory.
+* `gust_enc`: Unscrambles and uncompresses a Gust `.e` file into the current directory.
 
 Notes
 -----
 
 `gust_pak` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it detects "A17" (32-bit) and "A18" (64-bit) formats
-automatically. It should therefore works with all of the Atelier PC ports (including Atelier Sophie) as well as Blue Reflection's archives.
+automatically. It should therefore works with all of the Atelier PC ports (including _Atelier Sophie_) as well as _Blue Reflection_'s archives.
+
+`gust_enc` probably only works with _Atelier Sophie_ for now (since each game seems to use different scrambling seeds).
 
 Building
 ========
@@ -65,3 +68,4 @@ Thanks
   inspiration on how to unpack the `.elixir` and `.g1t` formats.
 * _Rich Geldreich_ and others for the [miniz](https://github.com/richgel999/miniz) inflate/deflate library.
 * _Krzysztof Gabis_ for the [parson](http://kgabis.github.com/parson/) JSON parsing library.
+* _Gust_, for making games that are interesting enough to make one want to crack their encryption algorithms.

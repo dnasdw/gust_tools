@@ -125,7 +125,7 @@ int main(int argc, char** argv)
     char path[256];
     uint8_t* buf = NULL;
     bool skip_decode;
-    int64_t file_data_offset = sizeof(pak_header) + header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
+    int64_t file_data_offset = sizeof(pak_header) + (int64_t)header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
     printf("OFFSET    SIZE     NAME\n");
     for (uint32_t i = 0; i < header.nb_entries; i++) {
         int j;

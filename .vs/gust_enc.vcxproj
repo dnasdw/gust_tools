@@ -19,20 +19,17 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\gust_elixir.c" />
-    <ClCompile Include="..\miniz_tinfl.c" />
+    <ClCompile Include="..\gust_enc.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\miniz_common.h" />
-    <ClInclude Include="..\miniz_tinfl.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{A7809FFE-461D-48F3-BA53-6A92B3E374D0}</ProjectGuid>
+    <ProjectGuid>{A634DC8E-CE9D-4154-9C73-FC0E5713C563}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>gust_elixir</RootNamespace>
+    <RootNamespace>gust_pak</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

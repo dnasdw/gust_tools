@@ -185,7 +185,7 @@ int main(int argc, char** argv)
     printf("OFFSET   SIZE     NAME\n");
     for (uint32_t i = 0; i < hdr->nb_files; i++) {
         lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
-        assert(entry->offset + entry->size <= lxr_size);
+        assert(entry->offset + entry->size <= (uint32_t)lxr_size);
         // Ignore "dummy" entries
         if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
             continue;

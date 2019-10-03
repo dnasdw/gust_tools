@@ -41,8 +41,13 @@
 #ifndef min
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
+
 #ifndef max
 #define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
+#ifndef array_size
+#define array_size(a) (sizeof(a) / sizeof(*a))
 #endif
 
 #if defined(_WIN32)
@@ -57,10 +62,22 @@ static __inline char* basename(const char* path)
 #if defined (_MSC_VER)
 #include <stdlib.h>
 #pragma intrinsic(_byteswap_ulong)
+#define bswap_uint16 _byteswap_ushort
 #define bswap_uint32 _byteswap_ulong
 #else
+#define bswap_uint16 __builtin_bswap16
 #define bswap_uint32 __builtin_bswap32
 #endif
+
+static __inline uint16_t getle16(const void* p)
+{
+    return *(const uint16_t*)(const uint8_t*)(p);
+}
+
+static __inline uint16_t getbe16(const void* p)
+{
+    return bswap_uint16(getle16(p));
+}
 
 static __inline uint32_t getle32(const void* p)
 {

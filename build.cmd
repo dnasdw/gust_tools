@@ -27,5 +27,11 @@ cl.exe %APP_NAME%.c util.c parson.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 
+echo.
+set APP_NAME=gust_enc
+cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%.exe
+if %ERRORLEVEL% neq 0 goto out
+echo =^> %APP_NAME%.exe
+
 :out
 pause
