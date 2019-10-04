@@ -20,9 +20,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\gust_enc.c" />
+    <ClCompile Include="..\parson.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\parson.h" />
     <ClInclude Include="..\util.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

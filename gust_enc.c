@@ -42,10 +42,17 @@
 #include <stdlib.h>
 
 #include "util.h"
+#include "parson.h"
 
 #define SEED_CONSTANT       0x3b9a73c9
 #define SEED_INCREMENT      0x2f09
-#define SEED_FENCE          0x1532
+
+typedef struct {
+    uint32_t main[3];
+    uint32_t table[3];
+    uint32_t length[3];
+    uint32_t fence;
+} seed_data;
 
 // Stupid sexy scrambler ("Feels like I'm reading nothing at all!")
 bool descramble_chunk(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2], uint16_t slice_size)
@@ -105,25 +112,25 @@ bool descramble_chunk(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2], uin
     return true;
 }
 
-bool descrambler1(uint8_t* buf, uint32_t buf_size)
+bool descrambler1(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
 {
     uint32_t chunk_size = min(buf_size, 0x800);
 
     // Extra scrambling is applied to the end of the file
     uint8_t* chunk = &buf[buf_size - chunk_size];
 
-    // TODO: check this constant with other games
-    uint32_t seed[2] = { SEED_CONSTANT, 0x6e45 };
+    uint32_t seed[2] = { SEED_CONSTANT, seeds->main[0] };
     if (!descramble_chunk(chunk, chunk_size, seed, 0x100))
         return false;
 
-    // TODO: check this constant with other games
-    seed[1] = 0xc9af;
+    seed[1] = seeds->main[1];
     for (uint32_t i = 0; i < buf_size; i += 2) {
         seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
         uint32_t x = (seed[1] >> 16) & 0x7fff;
         uint16_t w = getbe16(&buf[i]);
-        if (x % SEED_FENCE >= SEED_FENCE / 2)
+        // I strongly suspect seed->fence is actually derived from the other seeds
+        // but I haven't been able to figure the mathematical formula for that yet.
+        if (x % seeds->fence >= seeds->fence / 2)
             w ^= (uint16_t)x;
         w -= (uint16_t)x;
         buf[i] = (uint8_t)(w >> 8);
@@ -133,14 +140,8 @@ bool descrambler1(uint8_t* buf, uint32_t buf_size)
     return true;
 }
 
-bool descrambler2(uint8_t* buf, uint32_t buf_size)
+bool descrambler2(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
 {
-    // This part of the code uses a table with 3 seed values + 3 seed switches
-    // These seeds are different for each game (these ones are from Atelier Sophie)
-    uint32_t seed_table[3] = { 0xa9d9, 0xae8f, 0x89f5 };
-    uint32_t seed_switch[3] = { 0x1d, 0x13, 0x0b };
-    uint32_t seed[2];
-
     if ((buf_size % 4 != 0) || (buf_size < 4 * sizeof(uint32_t))) {
         fprintf(stderr, "ERROR: Invalid descrambler 2 buffer size 0x%04x\n", buf_size);
         return false;
@@ -148,7 +149,7 @@ bool descrambler2(uint8_t* buf, uint32_t buf_size)
 
     buf_size -= sizeof(uint32_t);
     // Generate a seed from the last 32-bit word from the buffer
-    seed[0] = getbe32(&buf[buf_size]) + SEED_CONSTANT;
+    uint32_t seed[2] = { getbe32(&buf[buf_size]) + SEED_CONSTANT, seeds->table[0] };
     buf_size -= sizeof(uint32_t);
     uint32_t file_checksum[2] = { 0, 0 };
     file_checksum[0] = getbe32(&buf[buf_size]);
@@ -166,17 +167,16 @@ bool descrambler2(uint8_t* buf, uint32_t buf_size)
     uint32_t seed_index = 0;
     uint32_t seed_switch_fudge = 0;
     uint32_t processed_for_this_seed = 0;
-    seed[1] = seed_table[seed_index];
     for (uint32_t i = 0; i < buf_size; i++) {
         seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
         buf[i] ^= seed[1] >> 16;
-        if (++processed_for_this_seed >= seed_switch[seed_index] + seed_switch_fudge) {
-            seed_table[seed_index++] = seed[1];
-            if (seed_index >= array_size(seed_table)) {
+        if (++processed_for_this_seed >= seeds->length[seed_index] + seed_switch_fudge) {
+            seeds->table[seed_index++] = seed[1];
+            if (seed_index >= array_size(seeds->table)) {
                 seed_index = 0;
                 seed_switch_fudge++;
             }
-            seed[1] = seed_table[seed_index];
+            seed[1] = seeds->table[seed_index];
             processed_for_this_seed = 0;
         }
     }
@@ -193,8 +193,7 @@ bool descrambler2(uint8_t* buf, uint32_t buf_size)
         return false;
     }
 
-    // TODO: check this constant with other games
-    seed[1] = 0x7525;
+    seed[1] = seeds->main[2];
     // Now descramble some more
     descramble_chunk(buf, min(buf_size, 0x800), seed, 0x80);
 
@@ -202,10 +201,10 @@ bool descrambler2(uint8_t* buf, uint32_t buf_size)
 }
 
 /*
-  The following 3 functions deal with the compression algorithm used by Gust, which
-  I am going to call 'Glaze', for "Gust Lempel–Ziv".
-  After much research, I still haven't figured out where Gust derived that one from.
-  All I can say is that it seems to be LZ based with code, dictionary and length tables.
+  The following 3 functions deal with the compression algorithm used by Gust, which appears
+  to be a derivative of LHA/LHZ, which I am going to call 'Glaze', for "Gust Lempel–Ziv".
+  This compression looks LZSS based with separate dictionary and length tables added.
+  See https://en.wikipedia.org/wiki/Lempel–Ziv–Storer–Szymanski
  */
 
 // Read code_len bits from bitstream and emit a bytecode
@@ -378,6 +377,8 @@ uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_t dst_l
 
 int main(int argc, char** argv)
 {
+    seed_data seeds;
+    char path[256];
     uint8_t *buf = NULL, *dec = NULL;
     int r = -1;
     const char* app_name = basename(argv[0]);
@@ -386,6 +387,39 @@ int main(int argc, char** argv)
             "Decrypt and decompress Gust .e file.\n", app_name, app_name);
         return 0;
     }
+
+    // Populate the descrambling seeds from the JSON file
+    snprintf(path, sizeof(path), "%s.json", app_name);
+    JSON_Value* json_val = json_parse_file_with_comments(path);
+    if (json_val == NULL) {
+        fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
+        return -1;
+    }
+    const char* seeds_id = json_object_get_string(json_object(json_val), "seeds_id");
+    JSON_Array* seeds_array = json_object_get_array(json_object(json_val), "seeds");
+    JSON_Object* seeds_entry = NULL;
+    for (size_t i = 0; i < json_array_get_count(seeds_array); i++) {
+        seeds_entry = json_array_get_object(seeds_array, i);
+        if (strcmp(seeds_id, json_object_get_string(seeds_entry, "id")) == 0)
+            break;
+        seeds_entry = NULL;
+    }
+    if (seeds_entry == NULL) {
+        fprintf(stderr, "ERROR: Can't find the seeds for \"%s\" in '%s'\n", seeds_id, path);
+        json_value_free(json_val);
+        return -1;
+    }
+
+    printf("Using the descrambling seeds for %s\n", json_object_get_string(seeds_entry, "name"));
+    printf("To descramble another game, please edit \"seeds_id\" in '%s'\n", path);
+
+    for (size_t i = 0; i < array_size(seeds.main); i++) {
+        seeds.main[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "main"), i);
+        seeds.table[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "table"), i);
+        seeds.length[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "length"), i);
+    }
+    seeds.fence = (uint32_t)json_object_get_number(seeds_entry, "fence");
+    json_value_free(json_val);
 
     // Don't bother checking for case or if these extensions are really at the bitstream_end
     char* e_pos = strstr(argv[1], ".e");
@@ -428,11 +462,11 @@ int main(int argc, char** argv)
         goto out;
 
     // Call first descrambler
-    if (!descrambler1(stream, src_size))
+    if (!descrambler1(stream, src_size, &seeds))
         goto out;
 
     // Call second descrambler
-    if (!descrambler2(stream, src_size))
+    if (!descrambler2(stream, src_size, &seeds))
         goto out;
 
     // Uncompress descrambled data
@@ -441,7 +475,6 @@ int main(int argc, char** argv)
         goto out;
     }
     FILE* dst_file = NULL;
-    char path[256];
     snprintf(path, sizeof(path), "%s.xml", argv[1]);
     dst_file = fopen(path, "wb");
     if (dst_file == NULL) {

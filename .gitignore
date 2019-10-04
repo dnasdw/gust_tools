@@ -2,6 +2,7 @@
 *.d
 *.db
 *.dds
+*.e
 *.exe
 *.g1a
 *.g1co
@@ -23,6 +24,7 @@
 *.swg
 *.vcxproj.filters
 *.vcxproj.user
+*.xml
 *.zip
 x86
 x64

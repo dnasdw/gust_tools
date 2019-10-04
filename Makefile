@@ -20,7 +20,7 @@ OBJ3=${SRC3:.c=.o}
 DEP3=${SRC3:.c=.d}
 
 BIN4=gust_enc
-SRC4=${BIN4}.c  util.c
+SRC4=${BIN4}.c util.c parson.c
 OBJ4=${SRC4:.c=.o}
 DEP4=${SRC4:.c=.d}
 

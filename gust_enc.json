@@ -1,0 +1,55 @@
+{
+    "version": 0x100,
+    /* Change this to the id of the game you wish to descramble (using one of the ids below) */
+    "seeds_id": "BR",
+    /* Seeds used by a game executable can be found in its IDA Freeware disassembly:
+     * 1. Locate the function call that uses literal value 3B9A73C9h (SEED_CONSTANT).
+     * 2. At the beginning of that function you get length[] and table[] array values (lengths are usually 1Dh, 13h, 0Bh).
+     * 3. Find the first call to a function that uses parameters 800h and 100h and look for another literal. That's main[0].
+     * 4. Find the next literal being used after this call. That's main[1].
+     * 5. Go further down and look for 2 literals, one of which is half the value of the first. That's fence.
+     * 6. Finally look for a call near the end where 80h is used as parameter. The other literal there is main[2].
+     */
+    "seeds": [
+        {
+            "id": "A17",
+            "name": "Atelier Sophie",
+            "main": [
+                0x6e45,
+                0xc9af,
+                0x7525
+            ],
+            "table": [
+                0xa9d9,
+                0xae8f,
+                0x89f5
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x1532
+        },
+        {
+            "id": "BR",
+            "name": "Blue Reflection",
+            "main": [
+                0x6947,
+                0xcb63,
+                0x7597
+            ],
+            "table": [
+                0xa829,
+                0xb047,
+                0x8af5
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x1646
+        }
+   ]
+}
