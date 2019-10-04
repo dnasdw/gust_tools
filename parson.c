@@ -28,6 +28,10 @@
 #endif /* _CRT_SECURE_NO_WARNINGS */
 #endif /* _MSC_VER */
 
+/* Uncomment this to enable hex number parsing as well as force all numeric output to hex.
+ * Note however that you only get about 50 usable bits for numeric storage, not 64. */
+#define PARSON_FORCE_HEX
+
 #include "parson.h"
 
 #include <stdio.h>
@@ -45,6 +49,7 @@
 #define MAX_NESTING       2048
 
 #define FLOAT_FORMAT "%1.17g" /* do not increase precision without incresing NUM_BUF_SIZE */
+#define HEX_FORMAT "0x%llx"
 #define NUM_BUF_SIZE 64 /* double printed with "%1.17g" shouldn't be longer than 25 bytes so let's be paranoid and use 64 */
 
 #define SIZEOF_TOKEN(a)       (sizeof(a) - 1)
@@ -190,6 +195,25 @@ static int parse_utf16_hex(const char *s, unsigned int *result) {
     *result = (unsigned int)((x1 << 12) | (x2 << 8) | (x3 << 4) | x4);
     return 1;
 }
+
+#if defined(PARSON_FORCE_HEX)
+static double hstrtod(const char* s, char** end) {
+    unsigned long long result = 0;
+    *end = (char*)s;
+    int d = hex_char_to_int(**end);
+    if (d < 0) {
+        errno = -EILSEQ;
+        return 0.0;
+    }
+    /* Don't bother checking limits for now */
+    do {
+        result = (result << 4) | d;
+        (*end)++;
+        d = hex_char_to_int(**end);
+    } while (d >= 0);
+    return (double)result;
+}
+#endif
 
 static int num_bytes_in_utf8_sequence(unsigned char c) {
     if (c == 0xC0 || c == 0xC1 || c > 0xF4 || IS_CONT(c)) {
@@ -848,9 +872,19 @@ static JSON_Value * parse_number_value(const char **string) {
     char *end;
     double number = 0;
     errno = 0;
-    number = strtod(*string, &end);
-    if (errno || !is_decimal(*string, end - *string)) {
-        return NULL;
+#if defined(PARSON_FORCE_HEX)
+    if ((**string == '0') && ((*string)[1] == 'x' || (*string)[1] == 'X')) {
+        number = hstrtod(*string + 2, &end);
+        if (errno) {
+            return NULL;
+        }
+    } else
+#endif
+    {
+        number = strtod(*string, &end);
+        if (errno || !is_decimal(*string, end - *string)) {
+            return NULL;
+        }
     }
     *string = end;
     return json_value_init_number(number);
@@ -993,7 +1027,11 @@ static int json_serialize_to_buffer_r(const JSON_Value *value, char *buf, int le
             if (buf != NULL) {
                 num_buf = buf;
             }
+#if defined(PARSON_FORCE_HEX)
+            written = sprintf(num_buf, HEX_FORMAT, (unsigned long long)num);
+#else
             written = sprintf(num_buf, FLOAT_FORMAT, num);
+#endif
             if (written < 0) {
                 return -1;
             }
