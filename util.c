@@ -60,3 +60,17 @@ bool create_path(char* path)
     return result;
 }
 
+bool write_file(uint8_t* buf, uint32_t size, char* path)
+{
+    FILE* file = NULL;
+    file = fopen(path, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
+        return false;
+    }
+    bool r = (fwrite(buf, 1, size, file) == size);
+    fclose(file);
+    if (!r)
+        fprintf(stderr, "ERROR: Can't write file '%s'\n", path);
+    return r;
+}

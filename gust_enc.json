@@ -9,7 +9,7 @@
      * 4. Find the next literal being used after this call. That's main[1].
      * 5. Go further down and look for 2 literals, one of which is half the value of the first. That's fence.
      * 6. Finally look for a call near the end where 80h is used as parameter. The other literal there is main[2].
-     * Note: Except for fence, which is even, all of the seeds should be odd numbers.
+     * Note: Except for fence, which is even, all of the seeds are 16-bit prime numbers.
      */
     "seeds": [
         {
