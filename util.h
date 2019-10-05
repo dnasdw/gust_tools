@@ -75,7 +75,7 @@ static __inline uint16_t getle16(const void* p)
     return *(const uint16_t*)(const uint8_t*)(p);
 }
 
-static __inline void setle16(const void* p, uint16_t v)
+static __inline void setle16(const void* p, const uint16_t v)
 {
     *((uint16_t*)p) = v;
 }
@@ -85,7 +85,7 @@ static __inline uint16_t getbe16(const void* p)
     return bswap_uint16(getle16(p));
 }
 
-static __inline void setbe16(const void* p, uint16_t v)
+static __inline void setbe16(const void* p, const uint16_t v)
 {
     setle16(p, bswap_uint16(v));
 }
@@ -95,7 +95,7 @@ static __inline uint32_t getle32(const void* p)
     return *(const uint32_t*)(const uint8_t*)(p);
 }
 
-static __inline void setle32(const void* p, uint32_t v)
+static __inline void setle32(const void* p, const uint32_t v)
 {
     *((uint32_t*)p) = v;
 }
@@ -105,7 +105,7 @@ static __inline uint32_t getbe32(const void* p)
     return bswap_uint32(getle32(p));
 }
 
-static __inline void setbe32(const void* p, uint32_t v)
+static __inline void setbe32(const void* p, const uint32_t v)
 {
     setle32(p, bswap_uint32(v));
 }
@@ -115,7 +115,7 @@ static __inline uint64_t getle64(const void* p)
     return *(const uint64_t*)(const uint8_t*)(p);
 }
 
-static __inline void setle64(const void* p, uint64_t v)
+static __inline void setle64(const void* p, const uint64_t v)
 {
     *((uint64_t*)p) = v;
 }
@@ -124,11 +124,13 @@ static __inline uint64_t getbe64(const void* p)
     return bswap_uint64(getle64(p));
 }
 
-static __inline void setbe64(const void* p, uint64_t v)
+static __inline void setbe64(const void* p, const uint64_t v)
 {
     setle64(p, bswap_uint64(v));
 }
 
 bool create_path(char* path);
 
-bool write_file(uint8_t* buf, uint32_t size, char* path);
+bool write_file(const uint8_t* buf, const uint32_t size, const char* path);
+
+uint32_t read_file(const char* path, uint8_t** buf);

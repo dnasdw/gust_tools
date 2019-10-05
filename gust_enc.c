@@ -358,8 +358,8 @@ static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_
     return dec_length;
 }
 
-static bool rescramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
-                       uint32_t required_size, uint32_t payload_checksum)
+static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
+                     uint32_t required_size, uint32_t payload_checksum)
 {
     bool r = false;
 
@@ -390,7 +390,7 @@ static bool rescramble(uint8_t* payload, uint32_t payload_size, char* path, seed
     if (!rotating_scrambler(main_payload, payload_size, seeds, payload_checksum))
         goto out;
 
-    // Add the end of stream marker
+    // Add the end of payload marker
     main_payload[payload_size] = 0xff;
 
     // From now on, we'll scramble the footer as well
@@ -421,11 +421,74 @@ out:
     return r;
 }
 
+static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* seeds,
+                           uint32_t* required_size)
+{
+    uint32_t type = getbe32(payload);
+    if (type != 2) {
+        fprintf(stderr, "ERROR: Invalid type: 0x%08x\n", type);
+        return 0;
+    }
+    *required_size = getbe32(&payload[4]);
+    payload = &payload[E_HEADER_SIZE];
+    payload_size -= E_HEADER_SIZE;
+
+    // Revert the bit scrambling that was applied to the end of the file
+    uint32_t seed[2] = { SEED_CONSTANT, seeds->main[0] };
+    uint8_t* chunk = &payload[payload_size - min(payload_size, 0x800)];
+    if (!bit_scrambler(chunk, min(payload_size, 0x800), seed, 0x100, true))
+        return 0;
+
+    // Now call the fenced scrambler on the whole payload
+    if (!fenced_scrambler(payload, payload_size, seeds, true))
+        return 0;
+
+    // Read the descrambled checksums footer (16 bytes)
+    uint32_t* footer = (uint32_t*)&payload[payload_size - E_FOOTER_SIZE];
+    payload_size -= E_FOOTER_SIZE;
+    if (footer[0] != 0) {
+        fprintf(stderr, "ERROR: unexpected footer value: 0x%08x\n", footer[0]);
+        return 0;
+    }
+    // The 3rd checksum is probably leftover from the compression algorithm used
+    uint32_t checksum[3] = { 0 - getbe32(&footer[1]), getbe32(&footer[2]), getbe32(&footer[3]) };
+
+    // Look for the bitstream_end marker and adjust our size
+    for (; (payload_size > 0) && (payload[payload_size] != 0xff); payload_size--);
+    if ((payload_size < sizeof(uint32_t)) || (payload[payload_size] != 0xff)) {
+        fprintf(stderr, "ERROR: End marker was not found\n");
+        return 0;
+    }
+    payload[payload_size] = 0x00;
+
+    // Now call the rotating scrambler on the actual payload
+    if (!rotating_scrambler(payload, payload_size, seeds, checksum[2]))
+        return 0;
+
+    // Validate the checksums
+    for (uint32_t i = 0; i < (payload_size & ~3); i += sizeof(uint32_t)) {
+        checksum[0] -= getbe32(&payload[i]);
+        checksum[1] ^= ~getbe32(&payload[i]);
+    }
+    if ((checksum[0] != 0) || (checksum[1] != 0)) {
+        fprintf(stderr, "ERROR: Descrambler 2 checksum mismatch\n");
+        return 0;
+    }
+
+    // Finally revert the additional bit scrambling applied to the start of the file
+    seed[0] = checksum[2] + SEED_CONSTANT;
+    seed[1] = seeds->main[2];
+    if (!bit_scrambler(payload, min((payload_size & ~3), 0x800), seed, 0x80, true))
+        return 0;
+
+    return payload_size;
+}
+
 int main(int argc, char** argv)
 {
     seed_data seeds;
     char path[256];
-    uint8_t *buf = NULL, *dec = NULL;
+    uint8_t *src = NULL, *dst = NULL;
     int r = -1;
     const char* app_name = basename(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
@@ -477,105 +540,34 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    FILE* src_file = fopen(argv[argc - 1], "rb");
-    if (src_file == NULL) {
-        fprintf(stderr, "ERROR: Can't open file '%s'", argv[argc - 1]);
-        return -1;
-    }
-
-    fseek(src_file, 0L, SEEK_END);
-    uint32_t stream_size = (uint32_t)ftell(src_file);
-    fseek(src_file, 0L, SEEK_SET);
-
-    if (((stream_size % 4) != 0) || (stream_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
+    uint32_t src_size = read_file(argv[argc - 1], &src);
+    if ((src_size == 0) || ((src_size % 4) != 0) || (src_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
         fprintf(stderr, "ERROR: Invalid file size");
         goto out;
     }
 
-    buf = malloc(stream_size);
-    if (buf == NULL)
-        goto out;
-    if (fread(buf, 1, stream_size, src_file) != stream_size) {
-        fprintf(stderr, "ERROR: Can't read file");
-        goto out;
-    }
-
-    uint8_t* stream = buf;
-    uint32_t type = getbe32(stream);
-    if (type != 2) {
-        fprintf(stderr, "ERROR: Invalid type: 0x%08x\n", type);
-        goto out;
-    }
-    uint32_t dec_size = getbe32(&stream[4]);
-    stream = &stream[E_HEADER_SIZE];
-    stream_size -= E_HEADER_SIZE;
-
-    dec = malloc(dec_size);
-    if (dec == NULL)
-        goto out;
-
-    // Revert the bit scrambling that was applied to the end of the file
-    uint32_t seed[2] = { SEED_CONSTANT, seeds.main[0] };
-    uint8_t* chunk = &stream[stream_size - min(stream_size, 0x800)];
-    if (!bit_scrambler(chunk, min(stream_size, 0x800), seed, 0x100, true))
-        goto out;
-
-    // Now call the fenced scrambler on the whole file
-    if (!fenced_scrambler(stream, stream_size, &seeds, true))
-        goto out;
-
-    // Read the descrambled checksums footer (16 bytes)
-    uint32_t* footer = (uint32_t*)&stream[stream_size - E_FOOTER_SIZE];
-    stream_size -= E_FOOTER_SIZE;
-    if (footer[0] != 0) {
-        fprintf(stderr, "ERROR: unexpected footer value: 0x%08x\n", footer[0]);
-        goto out;
-    }
-    // The 3rd checksum is probably leftover from the compression algorithm used
-    uint32_t checksum[3] = { 0 - getbe32(&footer[1]), getbe32(&footer[2]), getbe32(&footer[3]) };
-
-    // Look for the bitstream_end marker and adjust our size
-    for (; (stream_size > 0) && (stream[stream_size] != 0xff); stream_size--);
-    if ((stream_size < sizeof(uint32_t)) || (stream[stream_size] != 0xff)) {
-        fprintf(stderr, "ERROR: End marker was not found\n");
-        goto out;
-    }
-    stream[stream_size] = 0x00;
-
-    // Now call the rotating scrambler on the actual payload
-    if (!rotating_scrambler(stream, stream_size, &seeds, checksum[2]))
-        goto out;
-
-    uint32_t old_stream_size = stream_size;
-    // Validate the checksums
-    stream_size &= ~3;
-    for (uint32_t i = 0; i < stream_size; i += sizeof(uint32_t)) {
-        checksum[0] -= getbe32(&stream[i]);
-        checksum[1] ^= ~getbe32(&stream[i]);
-    }
-    if ((checksum[0] != 0) || (checksum[1] != 0)) {
-        fprintf(stderr, "ERROR: Descrambler 2 checksum mismatch\n");
-        return false;
-    }
-
-    // Finally revert the additional bit scrambling applied to the start of the file
-    seed[0] = checksum[2] + SEED_CONSTANT;
-    seed[1] = seeds.main[2];
-    if (!bit_scrambler(stream, min(stream_size, 0x800), seed, 0x80, true))
+    // Descramble the data
+    uint32_t dst_size;
+    uint32_t payload_size = unscramble(src, src_size, &seeds, &dst_size);
+    if ((payload_size == 0) || (dst_size == 0))
         goto out;
 
     // "We can rebuild (it), we have the technology."
     snprintf(path, sizeof(path), "%s.rebuilt", argv[argc - 1]);
-    rescramble(stream, old_stream_size, path, &seeds, dec_size, checksum[2]);
+    // Sophie's GrowData.xml.e checksum = 0x52ccbbab
+    scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, dst_size, 0x52ccbbab);
 
     // Uncompress descrambled data
-    if (unglaze(stream, stream_size, dec, dec_size) != dec_size) {
+    dst = malloc(dst_size);
+    if (dst == NULL)
+        goto out;
+    if (unglaze(&src[E_HEADER_SIZE], payload_size, dst, dst_size) != dst_size) {
         fprintf(stderr, "ERROR: Can't decompress file");
         goto out;
     }
 
     snprintf(path, sizeof(path), "%s.xml", argv[argc - 1]);
-    if (!write_file(dec, dec_size, path))
+    if (!write_file(dst, dst_size, path))
         goto out;
 
     // What a wild ride it has been to get there...
@@ -584,9 +576,8 @@ int main(int argc, char** argv)
     r = 0;
 
 out:
-    free(dec);
-    free(buf);
-    fclose(src_file);
+    free(dst);
+    free(src);
 
     return r;
 }

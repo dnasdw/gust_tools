@@ -60,7 +60,7 @@ bool create_path(char* path)
     return result;
 }
 
-bool write_file(uint8_t* buf, uint32_t size, char* path)
+bool write_file(const uint8_t* buf, const uint32_t size, const char* path)
 {
     FILE* file = NULL;
     file = fopen(path, "wb");
@@ -73,4 +73,34 @@ bool write_file(uint8_t* buf, uint32_t size, char* path)
     if (!r)
         fprintf(stderr, "ERROR: Can't write file '%s'\n", path);
     return r;
+}
+
+uint32_t read_file(const char* path, uint8_t** buf)
+{
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) {
+        fprintf(stderr, "ERROR: Can't open file '%s'", path);
+        return 0;
+    }
+
+    fseek(file, 0L, SEEK_END);
+    uint32_t size = (uint32_t)ftell(file);
+    fseek(file, 0L, SEEK_SET);
+
+    *buf =  malloc(size);
+    if (*buf == NULL) {
+        size = 0;
+        goto out;
+    }
+    if (fread(*buf, 1, size, file) != size) {
+        fprintf(stderr, "ERROR: Can't read file");
+        size = 0;
+    }
+out:
+    fclose(file);
+    if (size == 0) {
+        free(*buf);
+        *buf = NULL;
+    }
+    return size;
 }
