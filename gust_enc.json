@@ -9,6 +9,7 @@
      * 4. Find the next literal being used after this call. That's main[1].
      * 5. Go further down and look for 2 literals, one of which is half the value of the first. That's fence.
      * 6. Finally look for a call near the end where 80h is used as parameter. The other literal there is main[2].
+     * Note: Except for fence, which is even, all of the seeds should be odd numbers.
      */
     "seeds": [
         {
@@ -30,6 +31,46 @@
                 0x0b
             ],
             "fence": 0x1532
+        },
+        {
+            "id": "A18",
+            "name": "Atelier Firis",
+            "main": [
+                0x69b5,
+                0xd069,
+                0x7577
+            ],
+            "table": [
+                0xa80b,
+                0xb3c5,
+                0x8c89
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x15da
+        },
+        {
+            "id": "A19",
+            "name": "Atelier Lydie & Suelle",
+            "main": [
+                0x6d7b,
+                0xcac3,
+                0x747b
+            ],
+            "table": [
+                0xa8e5,
+                0xb0b1,
+                0x8a5b
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x156a
         },
         {
             "id": "BR",

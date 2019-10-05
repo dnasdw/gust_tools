@@ -50,8 +50,12 @@
 
 #define FLOAT_FORMAT "%1.17g" /* do not increase precision without incresing NUM_BUF_SIZE */
 #if defined(PARSON_FORCE_HEX)
-#include <inttypes.h>
-#define HEX_FORMAT "0x%" PRIx64
+#if defined(_WIN32)
+#define HEX_FORMAT "0x%I64x"
+#else
+#define HEX_FORMAT "0x%llx"
+#endif
+
 #endif
 #define NUM_BUF_SIZE 64 /* double printed with "%1.17g" shouldn't be longer than 25 bytes so let's be paranoid and use 64 */
 

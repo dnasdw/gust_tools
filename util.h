@@ -61,12 +61,13 @@ static __inline char* basename(const char* path)
 
 #if defined (_MSC_VER)
 #include <stdlib.h>
-#pragma intrinsic(_byteswap_ulong)
 #define bswap_uint16 _byteswap_ushort
 #define bswap_uint32 _byteswap_ulong
+#define bswap_uint64 _byteswap_uint64
 #else
 #define bswap_uint16 __builtin_bswap16
 #define bswap_uint32 __builtin_bswap32
+#define bswap_uint64 __builtin_bswap64
 #endif
 
 static __inline uint16_t getle16(const void* p)
@@ -74,9 +75,19 @@ static __inline uint16_t getle16(const void* p)
     return *(const uint16_t*)(const uint8_t*)(p);
 }
 
+static __inline void setle16(const void* p, uint16_t v)
+{
+    *((uint16_t*)p) = v;
+}
+
 static __inline uint16_t getbe16(const void* p)
 {
     return bswap_uint16(getle16(p));
+}
+
+static __inline void setbe16(const void* p, uint16_t v)
+{
+    setle16(p, bswap_uint16(v));
 }
 
 static __inline uint32_t getle32(const void* p)
@@ -84,19 +95,38 @@ static __inline uint32_t getle32(const void* p)
     return *(const uint32_t*)(const uint8_t*)(p);
 }
 
+static __inline void setle32(const void* p, uint32_t v)
+{
+    *((uint32_t*)p) = v;
+}
+
 static __inline uint32_t getbe32(const void* p)
 {
     return bswap_uint32(getle32(p));
 }
 
-static __inline uint64_t getle64(const void* p)
+static __inline void setbe32(const void* p, uint32_t v)
 {
-    return (((uint64_t)getle32((void*)((uintptr_t)p + 4))) << 32) | getle32(p);
+    setle32(p, bswap_uint32(v));
 }
 
+static __inline uint64_t getle64(const void* p)
+{
+    return *(const uint64_t*)(const uint8_t*)(p);
+}
+
+static __inline void setle64(const void* p, uint64_t v)
+{
+    *((uint64_t*)p) = v;
+}
 static __inline uint64_t getbe64(const void* p)
 {
-    return (((uint64_t)getbe32(p)) << 32) | getbe32((void*)((uintptr_t)p + 4));
+    return bswap_uint64(getle64(p));
+}
+
+static __inline void setbe64(const void* p, uint64_t v)
+{
+    setle64(p, bswap_uint64(v));
 }
 
 bool create_path(char* path);

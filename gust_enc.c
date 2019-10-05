@@ -28,7 +28,7 @@
 
   And _please_ don't try to fight modders: We are on your side!
 
-  Kind regards,
+  Sincerely,
 
   -- VitaSmith, 2019-10-02
 
@@ -55,7 +55,7 @@ typedef struct {
 } seed_data;
 
 // Stupid sexy scrambler ("Feels like I'm reading nothing at all!")
-bool descramble_chunk(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2], uint16_t slice_size)
+static bool descramble_chunk(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2], uint16_t slice_size)
 {
     // Table_size needs to be 8 * slice_size, to encompass all individual bit positions
     uint32_t x, table_size = slice_size << 3;
@@ -112,7 +112,7 @@ bool descramble_chunk(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2], uin
     return true;
 }
 
-bool descrambler1(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
+static bool descrambler1(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
 {
     uint32_t chunk_size = min(buf_size, 0x800);
 
@@ -133,14 +133,13 @@ bool descrambler1(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
         if (x % seeds->fence >= seeds->fence / 2)
             w ^= (uint16_t)x;
         w -= (uint16_t)x;
-        buf[i] = (uint8_t)(w >> 8);
-        buf[i + 1] = (uint8_t)w;
+        setbe16(&buf[i], w);
     }
 
     return true;
 }
 
-bool descrambler2(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
+static bool descrambler2(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
 {
     if ((buf_size % 4 != 0) || (buf_size < 4 * sizeof(uint32_t))) {
         fprintf(stderr, "ERROR: Invalid descrambler 2 buffer size 0x%04x\n", buf_size);
@@ -201,75 +200,76 @@ bool descrambler2(uint8_t* buf, uint32_t buf_size, seed_data* seeds)
 }
 
 /*
-  The following 3 functions deal with the compression algorithm used by Gust, which appears
-  to be a derivative of LHA/LHZ, which I am going to call 'Glaze', for "Gust Lempel–Ziv".
-  This compression looks LZSS based with separate dictionary and length tables added.
-  See https://en.wikipedia.org/wiki/Lempel–Ziv–Storer–Szymanski
+  The following functions deal with the compression algorithm used by Gust, which
+  looks like a derivative of LZ4 that I am calling 'Glaze', for "Gust Lempel–Ziv".
  */
 
-// Read code_len bits from bitstream and emit a bytecode
-uint8_t get_code_byte(uint8_t** psrc, int* src_bit_pos, int code_len)
-{
-    uint8_t code = 0;
+typedef struct {
+    uint8_t* buffer;
+    uint32_t size;
+    uint32_t pos;
+    int getbit_buffer;
+    int getbit_mask;
+} glz_ctx;
 
-    while (code_len > -1) {
-        code |= (uint8_t)(((1 << *src_bit_pos) & **psrc) >> *src_bit_pos) << code_len;
-        code_len--;
-        if (*src_bit_pos == 0) {
-            *src_bit_pos = 7;
-            (*psrc)++;
-         } else {
-            (*src_bit_pos)--;
+static int get_bits(glz_ctx* glz_ctx, int n)
+{
+    int x = 0;
+
+    for (int i = 0; i < n; i++) {
+        if (glz_ctx->getbit_mask == 0x00) {
+            if (glz_ctx->pos >= glz_ctx->size)
+                return EOF;
+            glz_ctx->getbit_buffer = glz_ctx->buffer[glz_ctx->pos++];
+            glz_ctx->getbit_mask = 0x80;
         }
+        x <<= 1;
+        if (glz_ctx->getbit_buffer & glz_ctx->getbit_mask)
+            x++;
+        glz_ctx->getbit_mask >>= 1;
     }
-    return code;
+
+    return x;
 }
 
 // Boy with extended open hand, looking at butterfly: "Is this Huffman encoding?"
-uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length, uint32_t* code_table_length)
+static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length, uint32_t* code_table_length)
 {
     *code_table_length = getbe32(bitstream);
+    bitstream = &bitstream[sizeof(uint32_t)];
+    bitstream_length -= sizeof(uint32_t);
     uint8_t* code_table = malloc(*code_table_length);
     if (code_table == NULL)
         return NULL;
     uint8_t* code = code_table;
-    uint8_t* bitstream_end = &bitstream[bitstream_length];
+    glz_ctx ctx = { 0 };
+    ctx.buffer = bitstream;
+    ctx.size = bitstream_length;
     uint8_t* code_end = &code_table[*code_table_length];
 
-    int bit_pos = 7;    // bit being processed in source
-    bitstream = &bitstream[sizeof(uint32_t)];
-    do {
-        if ((*bitstream & (1 << bit_pos)) == 0) {
-            // Bit sequence starts with 0 -> get the length of code to read
-            int code_len = 0;
-            do {
-                if (bit_pos-- == 0) {
-                    bit_pos = 7;
-                    bitstream++;
-                }
-            } while ((++code_len < 8) && ((*bitstream & (1 << bit_pos)) == 0));
-            if (code_len < 8) {
-                // Generate a code byte from the next code_len bits
-                *code++ = get_code_byte(&bitstream, &bit_pos, code_len);
-            } else {
-                // Bit sequence is all zeroes -> emit code 0x00
-                *code++ = 0;
-            }
-        } else {
+    int c;
+    while (((c = get_bits(&ctx, 1)) != EOF) && (code < code_end)) {
+        if (c) {
             // Bit sequence starts with 1 -> emit code 0x01
             *code++ = 1;
-            if (bit_pos-- == 0) {
-                bit_pos = 7;
-                bitstream++;
-            }
+        } else {
+            // Bit sequence starts with 0 -> get the length of code and emit it
+            int code_len = 0;
+            while ((++code_len < 8) && ((c = get_bits(&ctx, 1)) == 0));
+            if (c == EOF)
+                break;
+            if (code_len < 8)
+                *code++ = (uint8_t)((c << code_len) | get_bits(&ctx, code_len));
+            else
+                *code++ = 0;
         }
-    } while ((bitstream < bitstream_end) && (code < code_end));
+    }
 
     return code_table;
 }
 
 // Uncompress a glaze compressed file
-uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_t dst_length)
+static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_t dst_length)
 {
     uint32_t dec_length = getbe32(src);
     src = &src[sizeof(uint32_t)];
@@ -410,8 +410,8 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    printf("Using the descrambling seeds for %s\n", json_object_get_string(seeds_entry, "name"));
-    printf("To descramble another game, please edit \"seeds_id\" in '%s'\n", path);
+    printf("Using the descrambling seeds for %s (edit '%s' to change)\n",
+        json_object_get_string(seeds_entry, "name"), path);
 
     for (size_t i = 0; i < array_size(seeds.main); i++) {
         seeds.main[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "main"), i);
