@@ -208,25 +208,25 @@ typedef struct {
     uint8_t* buffer;
     uint32_t size;
     uint32_t pos;
-    int getbit_buffer;
-    int getbit_mask;
-} glz_ctx;
+    int getbits_buffer;
+    int getbits_mask;
+} getbits_ctx;
 
-static int get_bits(glz_ctx* glz_ctx, int n)
+static uint32_t getbits(getbits_ctx* ctx, int n)
 {
     int x = 0;
 
     for (int i = 0; i < n; i++) {
-        if (glz_ctx->getbit_mask == 0x00) {
-            if (glz_ctx->pos >= glz_ctx->size)
-                return EOF;
-            glz_ctx->getbit_buffer = glz_ctx->buffer[glz_ctx->pos++];
-            glz_ctx->getbit_mask = 0x80;
+        if (ctx->getbits_mask == 0x00) {
+            if (ctx->pos >= ctx->size)
+                return (uint32_t)EOF;
+            ctx->getbits_buffer = ctx->buffer[ctx->pos++];
+            ctx->getbits_mask = 0x80;
         }
         x <<= 1;
-        if (glz_ctx->getbit_buffer & glz_ctx->getbit_mask)
+        if (ctx->getbits_buffer & ctx->getbits_mask)
             x++;
-        glz_ctx->getbit_mask >>= 1;
+        ctx->getbits_mask >>= 1;
     }
 
     return x;
@@ -236,32 +236,29 @@ static int get_bits(glz_ctx* glz_ctx, int n)
 static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length, uint32_t* code_table_length)
 {
     *code_table_length = getbe32(bitstream);
-    bitstream = &bitstream[sizeof(uint32_t)];
-    bitstream_length -= sizeof(uint32_t);
     uint8_t* code_table = malloc(*code_table_length);
     if (code_table == NULL)
         return NULL;
-    uint8_t* code = code_table;
-    glz_ctx ctx = { 0 };
-    ctx.buffer = bitstream;
-    ctx.size = bitstream_length;
-    uint8_t* code_end = &code_table[*code_table_length];
+    getbits_ctx ctx = { 0 };
+    ctx.buffer = &bitstream[sizeof(uint32_t)];
+    ctx.size = bitstream_length - sizeof(uint32_t);
 
-    int c;
-    while (((c = get_bits(&ctx, 1)) != EOF) && (code < code_end)) {
-        if (c) {
+    for (uint32_t c = getbits(&ctx, 1), i = 0; i < *code_table_length; c = getbits(&ctx, 1), i++) {
+        if (c == (uint32_t)EOF) {
+            break;
+        } else if (c == 1) {
             // Bit sequence starts with 1 -> emit code 0x01
-            *code++ = 1;
+            code_table[i] = 1;
         } else {
             // Bit sequence starts with 0 -> get the length of code and emit it
             int code_len = 0;
-            while ((++code_len < 8) && ((c = get_bits(&ctx, 1)) == 0));
-            if (c == EOF)
+            while ((++code_len < 8) && ((c = getbits(&ctx, 1)) == 0));
+            if (c == (uint32_t)EOF)
                 break;
             if (code_len < 8)
-                *code++ = (uint8_t)((c << code_len) | get_bits(&ctx, code_len));
+                code_table[i] = (uint8_t)((c << code_len) | getbits(&ctx, code_len));
             else
-                *code++ = 0;
+                code_table[i] = 0;
         }
     }
 
@@ -279,6 +276,10 @@ static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_
     }
 
     uint32_t bitstream_length = getbe32(src);
+    if (bitstream_length <= sizeof(uint32_t)) {
+        fprintf(stderr, "ERROR: Glaze decompression bitstream is too small\n");
+        return 0;
+    }
     src = &src[sizeof(uint32_t)];
     uint32_t chk_length = bitstream_length + sizeof(uint32_t);
     if (chk_length >= src_length) {
@@ -382,9 +383,9 @@ int main(int argc, char** argv)
     uint8_t *buf = NULL, *dec = NULL;
     int r = -1;
     const char* app_name = basename(argv[0]);
-    if (argc != 2) {
-        printf("%s (c) 2019 VitaSmith\n\nUsage: %s <file.e>\n\n"
-            "Decrypt and decompress Gust .e file.\n", app_name, app_name);
+    if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
+        printf("%s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file.e>\n\n"
+            "Descramble and decompress a Gust .e file using the seeds for GAME_ID.\n", app_name, app_name);
         return 0;
     }
 
@@ -395,7 +396,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
         return -1;
     }
-    const char* seeds_id = json_object_get_string(json_object(json_val), "seeds_id");
+    const char* seeds_id = (argc == 3) ? &argv[1][1] : json_object_get_string(json_object(json_val), "seeds_id");
     JSON_Array* seeds_array = json_object_get_array(json_object(json_val), "seeds");
     JSON_Object* seeds_entry = NULL;
     for (size_t i = 0; i < json_array_get_count(seeds_array); i++) {
@@ -410,8 +411,11 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    printf("Using the descrambling seeds for %s (edit '%s' to change)\n",
-        json_object_get_string(seeds_entry, "name"), path);
+    printf("Using the descrambling seeds for %s", json_object_get_string(seeds_entry, "name"));
+    if (argc < 3)
+        printf(" (edit '%s' to change)\n", path);
+    else
+        printf("\n");
 
     for (size_t i = 0; i < array_size(seeds.main); i++) {
         seeds.main[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "main"), i);
@@ -422,15 +426,15 @@ int main(int argc, char** argv)
     json_value_free(json_val);
 
     // Don't bother checking for case or if these extensions are really at the bitstream_end
-    char* e_pos = strstr(argv[1], ".e");
+    char* e_pos = strstr(argv[argc - 1], ".e");
     if (e_pos == NULL) {
         fprintf(stderr, "ERROR: File should have a '.e' extension\n");
         return -1;
     }
 
-    FILE* src_file = fopen(argv[1], "rb");
+    FILE* src_file = fopen(argv[argc - 1], "rb");
     if (src_file == NULL) {
-        fprintf(stderr, "ERROR: Can't open file '%s'", argv[1]);
+        fprintf(stderr, "ERROR: Can't open file '%s'", argv[argc - 1]);
         return -1;
     }
 
@@ -475,7 +479,7 @@ int main(int argc, char** argv)
         goto out;
     }
     FILE* dst_file = NULL;
-    snprintf(path, sizeof(path), "%s.xml", argv[1]);
+    snprintf(path, sizeof(path), "%s.xml", argv[argc - 1]);
     dst_file = fopen(path, "wb");
     if (dst_file == NULL) {
         fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
