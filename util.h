@@ -131,6 +131,6 @@ static __inline void setbe64(const void* p, const uint64_t v)
 
 bool create_path(char* path);
 
-bool write_file(const uint8_t* buf, const uint32_t size, const char* path);
+bool write_file(const uint8_t* buf, const uint32_t size, const char* path, const bool create_backup);
 
 uint32_t read_file(const char* path, uint8_t** buf);

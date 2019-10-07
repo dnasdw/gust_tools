@@ -1,7 +1,7 @@
 {
     "version": 0x100,
     /* Change this to the id of the game you wish to descramble (using one of the ids below) */
-    "seeds_id": "BR",
+    "seeds_id": "A17",
     /* Seeds used by a game executable can be found in its IDA Freeware disassembly:
      * 1. Locate the function call that uses literal value 3B9A73C9h (SEED_CONSTANT).
      * 2. At the beginning of that function you get length[] and table[] array values (lengths are usually 1Dh, 13h, 0Bh).

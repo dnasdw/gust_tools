@@ -60,9 +60,25 @@ bool create_path(char* path)
     return result;
 }
 
-bool write_file(const uint8_t* buf, const uint32_t size, const char* path)
+bool write_file(const uint8_t* buf, const uint32_t size, const char* path, const bool create_backup)
 {
     FILE* file = NULL;
+    if (create_backup) {
+        struct stat st;
+        if (stat(path, &st) == 0) {
+            char* backup_path = malloc(strlen(path) + 5);
+            if (backup_path == NULL)
+                return false;
+            strcpy(backup_path, path);
+            strcat(backup_path, ".bak");
+            if (stat(backup_path, &st) != 0) {
+                if (rename(path, backup_path) == 0)
+                    printf("Saved backup as '%s'\n", backup_path);
+                else
+                    fprintf(stderr, "WARNING: Could not create backup file '%s\n", backup_path);
+            }
+        }
+    }
     file = fopen(path, "wb");
     if (file == NULL) {
         fprintf(stderr, "ERROR: Can't create file '%s'\n", path);

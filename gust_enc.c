@@ -1,5 +1,5 @@
 /*
-  gust_enc - Decoder for Gust (Koei/Tecmo) .e files
+  gust_enc - Encoder/Decoder for Gust (Koei/Tecmo) .e files
   Copyright © 2019 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
@@ -51,6 +51,13 @@
 #define SEED_CONSTANT       0x3b9a73c9
 #define SEED_INCREMENT      0x2f09
 
+// For Sophie's GrowData.xml.e
+//#define VALIDATE_CHECKSUM   0x52ccbbab
+// For Sophie's Marquee.xml.e
+//#define VALIDATE_CHECKSUM 0x92ca8716
+
+// #define CREATE_EXTRA_FILES
+
 typedef struct {
     uint32_t main[3];
     uint32_t table[3];
@@ -85,6 +92,9 @@ static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
 
     uint8_t* max_chunk = &chunk[chunk_size];
     while (chunk < max_chunk) {
+        // Make sure we don't overflow our table, else we're going to pick
+        // bits located outside our chunk
+        table_size = min(table_size, chunk_size << 3);
         // Create a base table of incremental 16-bit values
         for (uint32_t i = 0; i < table_size; i++)
             base_table[i] = (uint16_t)i;
@@ -215,17 +225,17 @@ static uint32_t getbits(getbits_ctx* ctx, int n)
 }
 
 // Boy with extended open hand, looking at butterfly: "Is this Huffman encoding?"
-static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length, uint32_t* code_table_length)
+static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length)
 {
-    *code_table_length = getbe32(bitstream);
-    uint8_t* code_table = malloc(*code_table_length);
+    uint32_t code_table_length = getbe32(bitstream);
+    uint8_t* code_table = malloc(code_table_length);
     if (code_table == NULL)
         return NULL;
     getbits_ctx ctx = { 0 };
     ctx.buffer = &bitstream[sizeof(uint32_t)];
     ctx.size = bitstream_length - sizeof(uint32_t);
 
-    for (uint32_t c = getbits(&ctx, 1), i = 0; i < *code_table_length; c = getbits(&ctx, 1), i++) {
+    for (uint32_t c = getbits(&ctx, 1), i = 0; i < code_table_length; c = getbits(&ctx, 1), i++) {
         if (c == GETBITS_EOF) {
             break;
         } else if (c == 1) {
@@ -247,33 +257,34 @@ static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length, 
     return code_table;
 }
 
-// Uncompress a glaze compressed file
+// Uncompress a glaze compressed buffer
 static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_t dst_length)
 {
     uint32_t dec_length = getbe32(src);
     src = &src[sizeof(uint32_t)];
-    if (dec_length != dst_length) {
-        fprintf(stderr, "ERROR: Glaze decompression size mismatch\n");
-        return dec_length;
+    if (dec_length > dst_length) {
+        fprintf(stderr, "ERROR: Glaze decompression buffer is too small\n");
+        return 0;
     }
 
     uint32_t bitstream_length = getbe32(src);
+    src = &src[sizeof(uint32_t)];
     if (bitstream_length <= sizeof(uint32_t)) {
         fprintf(stderr, "ERROR: Glaze decompression bitstream is too small\n");
         return 0;
     }
-    src = &src[sizeof(uint32_t)];
+
     uint32_t chk_length = bitstream_length + sizeof(uint32_t);
     if (chk_length >= src_length) {
         fprintf(stderr, "ERROR: Glaze decompression bitstream is too large\n");
         return 0;
     }
 
-    uint32_t code_len;
-    uint8_t* code_table = build_code_table(src, bitstream_length, &code_len);
+    uint32_t code_len = code_len = getbe32(src);
+    uint8_t* code_table = build_code_table(src, bitstream_length);
     if (code_table == NULL)
         return 0;
- 
+
     uint8_t* dict = &src[bitstream_length];
     uint32_t dict_len = getbe32(dict);
     dict = &dict[sizeof(uint32_t)];
@@ -343,13 +354,23 @@ static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_
         case 0x06:  // 2-byte code
             // Copy l + 8 bytes from source where l is provided by the code table
             l = *code++ + 8;
-            for (int i = l; i > 0; i--)
+            for (int i = l; i > 0; i--) {
                 *dst++ = *dict++;
+                if (dst > dst_max) {
+                    fprintf(stderr, "WARNING: Dictionary overflow for bytecode 0x06 (%d bytes)\n", i);
+                    break;
+                }
+            }
             break;
         case 0x07:  // 1-byte code + 1 byte from length table
             // Copy l + 14 bytes from the source where l is provided by the (separate) length table
-            for (int i = *len++ + 14; i > 0; i--)
+            for (int i = *len++ + 14; i > 0; i--) {
                 *dst++ = *dict++;
+                if (dst > dst_max) {
+                    fprintf(stderr, "WARNING: Dictionary overflow for bytecode 0x07 (%d bytes)\n", i);
+                    break;
+                }
+            }
             break;
         }
     }
@@ -358,10 +379,93 @@ static uint32_t unglaze(uint8_t* src, uint32_t src_length, uint8_t* dst, uint32_
     return dec_length;
 }
 
+// "Compress" a payload
+static uint32_t glaze(uint8_t* src, uint32_t src_size, uint8_t** dst)
+{
+    // Now, there is no way in hell I'm going to craft a bona fide LZ compressor when
+    // I have a strong suspicion that this Glaze format that Gust uses comes from a
+    // known public compression algorithm, that we simply haven't identified yet.
+    // Considering that we have a length table, allowing us to copy ~256 bytes of
+    // literals with a single bytecode, we're going to take a massive shortcut by:
+    // - Copying all our decompressed data, as is, to the dictionary table
+    // - Creating a length table for as many 256-byte blocks we need
+    // - Creating a bytecode table, made of only 0x07's, so that only straight block
+    //   copies from the dictionary are enacted.
+    // Of course, this means the resulting file won't be compressed in the slightest.
+    // But we don't really care about that for modding, do we?...
+
+    bool short_last_block = (src_size % 256 <= 14);
+    uint32_t num_blocks = ((src_size + 255) / 256);
+    if (short_last_block)
+        num_blocks--;
+    // Each block translates to a 5-bit bitstream code (00111b) that yields bytecode 0x07
+    uint32_t bitstream_size = ((5 * num_blocks) + 7) / 8;
+    // A Glaze compressed file is structured as follows:
+    // [decompressed_size] [bistream_size] [bytecode_size] <...bitstream...>
+    // [dictionary_size] <...dictionary...> [length_table_size] <...length_table...>
+    uint32_t compressed_size = 3 * sizeof(uint32_t) + bitstream_size + sizeof(uint32_t) + src_size + sizeof(uint32_t) + num_blocks;
+    *dst = malloc(compressed_size);
+    if (*dst == NULL)
+        return 0;
+    uint8_t* pos = *dst;
+    setbe32(pos, src_size);
+    pos = &pos[sizeof(uint32_t)];
+    // The bitstream size includes the bytecode size field
+    setbe32(pos, bitstream_size + sizeof(uint32_t));
+    pos = &pos[sizeof(uint32_t)];
+    // The bytecode size is our number of blocks
+    setbe32(pos, num_blocks);
+    pos = &pos[sizeof(uint32_t)];
+
+    // Our bitstream data repeats every 5 bytes, which we use to our advantage
+    for (uint32_t i = 0; i < bitstream_size; i += 5) {
+        pos[i] = 0x39;
+        pos[i + 1] = 0xce;
+        pos[i + 2] = 0x73;
+        pos[i + 3] = 0x9c;
+        pos[i + 4] = 0xe7;
+    }
+    // Zero the overflow bitstream data just in case
+    uint32_t nb_stream_bits_in_last_byte = (5 * num_blocks) % 8;
+    if (nb_stream_bits_in_last_byte != 0)
+        pos[bitstream_size - 1] &= 0xff << (8 - nb_stream_bits_in_last_byte);
+
+    // Now copy the "dictionary" which is just a verbatim copy of our input
+    pos = &pos[bitstream_size];
+    setbe32(pos, src_size);
+    pos = &pos[sizeof(uint32_t)];
+    memcpy(pos, src, src_size);
+
+    // Finally we add our length table
+    pos = &pos[src_size];
+    setbe32(pos, num_blocks);
+    pos = &pos[sizeof(uint32_t)];
+    memset(pos, 256 - 14, num_blocks - 1);
+    pos = &pos[num_blocks - 1];
+    // Our last block can be 1 to 256 bytes in length, but the size is offset by 14
+    if (short_last_block)
+        *pos = 255 - 14 + (src_size % 256);
+    else
+        *pos = (src_size - 14) % 256;
+
+    return compressed_size;
+}
+
+
+// IMPORTANT: The Atelier executables allocate a working buffer of size 'required_size'
+// for the decoding operation and, once they are done decompressing the data, zero it
+// using the computed size of the glaze stream.
+// Therefore, if you happen to have a glaze compressed stream that is LARGER than its
+// decompressed counterpart (our case for the files we re-encode), but set
+// 'required_size' to the decompressed size, the zeroing will OVERFLOW the allocated
+// buffer and result in a game crash.
+// TL;DR - Make sure that 'required_size' is set to the largest of the glaze compressed
+// file size or the uncompressed file size.
 static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
-                     uint32_t required_size, uint32_t payload_checksum)
+                     uint32_t required_size)
 {
     bool r = false;
+    uint32_t checksum[3] = { 0, 0, 0 };
 
     // Align the size (plus an extra byte for the end marker) to 16-bytes
     uint32_t main_payload_size = (payload_size + 1 + 0xf) & ~0xf;
@@ -371,23 +475,32 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     uint8_t* main_payload = &buf[E_HEADER_SIZE];
     memcpy(main_payload, payload, payload_size);
 
+    // Compute the last checksum
+#if !defined(VALIDATE_CHECKSUM)
+    for (uint32_t i = 0; i < payload_size; i += sizeof(uint32_t))
+        checksum[2] += getbe32(&payload[i]);
+#else
+    checksum[2] = VALIDATE_CHECKSUM;
+#endif
+
     // Scramble the beginning of the file
-    uint32_t seed[2] = { payload_checksum + SEED_CONSTANT, seeds->main[2] };
+    uint32_t seed[2] = { checksum[2] + SEED_CONSTANT, seeds->main[2] };
     if (!bit_scrambler(main_payload, min(payload_size, 0x800), seed, 0x80, false))
         goto out;
 
-    // Compute and write the footer checksums
-    uint32_t checksum[2] = { 0, 0 };
+    // Compute the other checksums
     for (uint32_t i = 0; i < (payload_size & ~3); i += sizeof(uint32_t)) {
         checksum[0] -= getbe32(&main_payload[i]);
         checksum[1] ^= ~getbe32(&main_payload[i]);
     }
+
+    // Write the checksums
     setbe32(&main_payload[(size_t)main_payload_size + 4], checksum[0]);
     setbe32(&main_payload[(size_t)main_payload_size + 8], checksum[1]);
-    setbe32(&main_payload[(size_t)main_payload_size + 12], payload_checksum);
+    setbe32(&main_payload[(size_t)main_payload_size + 12], checksum[2]);
 
     // Call the main scrambler
-    if (!rotating_scrambler(main_payload, payload_size, seeds, payload_checksum))
+    if (!rotating_scrambler(main_payload, payload_size, seeds, checksum[2]))
         goto out;
 
     // Add the end of payload marker
@@ -411,7 +524,7 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     setbe32(buf, 0x02);
     setbe32(&buf[4], required_size);
 
-    if (!write_file(buf, main_payload_size + E_HEADER_SIZE, path))
+    if (!write_file(buf, main_payload_size + E_HEADER_SIZE, path, true))
         goto out;
 
     r = true;
@@ -451,6 +564,9 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
         return 0;
     }
     // The 3rd checksum is probably leftover from the compression algorithm used
+#if defined(VALIDATE_CHECKSUM)
+    printf("3rd checksum = 0x%04x\n", getbe32(&footer[3]));
+#endif
     uint32_t checksum[3] = { 0 - getbe32(&footer[1]), getbe32(&footer[2]), getbe32(&footer[3]) };
 
     // Look for the bitstream_end marker and adjust our size
@@ -475,10 +591,14 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
         return 0;
     }
 
+    // Zero 16 bytes from the end marker position
+    for (uint32_t i = 0; i < E_FOOTER_SIZE; i++)
+        payload[payload_size + i] = 0;
+
     // Finally revert the additional bit scrambling applied to the start of the file
     seed[0] = checksum[2] + SEED_CONSTANT;
     seed[1] = seeds->main[2];
-    if (!bit_scrambler(payload, min((payload_size & ~3), 0x800), seed, 0x80, true))
+    if (!bit_scrambler(payload, min(payload_size, 0x800), seed, 0x80, true))
         return 0;
 
     return payload_size;
@@ -488,12 +608,13 @@ int main(int argc, char** argv)
 {
     seed_data seeds;
     char path[256];
+    uint32_t src_size, dst_size;
     uint8_t *src = NULL, *dst = NULL;
     int r = -1;
     const char* app_name = basename(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
         printf("%s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file.e>\n\n"
-            "Descramble and decompress a Gust .e file using the seeds for GAME_ID.\n", app_name, app_name);
+            "Encode or decode a Gust .e file using the seeds for GAME_ID.\n", app_name, app_name);
         return 0;
     }
 
@@ -502,7 +623,7 @@ int main(int argc, char** argv)
     JSON_Value* json_val = json_parse_file_with_comments(path);
     if (json_val == NULL) {
         fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
-        return -1;
+        goto out;
     }
     const char* seeds_id = (argc == 3) ? &argv[1][1] : json_object_get_string(json_object(json_val), "seeds_id");
     JSON_Array* seeds_array = json_object_get_array(json_object(json_val), "seeds");
@@ -516,10 +637,10 @@ int main(int argc, char** argv)
     if (seeds_entry == NULL) {
         fprintf(stderr, "ERROR: Can't find the seeds for \"%s\" in '%s'\n", seeds_id, path);
         json_value_free(json_val);
-        return -1;
+        goto out;
     }
 
-    printf("Using the descrambling seeds for %s", json_object_get_string(seeds_entry, "name"));
+    printf("Using the scrambling seeds for %s", json_object_get_string(seeds_entry, "name"));
     if (argc < 3)
         printf(" (edit '%s' to change)\n", path);
     else
@@ -533,51 +654,88 @@ int main(int argc, char** argv)
     seeds.fence = (uint32_t)json_object_get_number(seeds_entry, "fence");
     json_value_free(json_val);
 
-    // Don't bother checking for case or if these extensions are really at the bitstream_end
+    // Read the source file
+    src_size = read_file(argv[argc - 1], &src);
+    if (src_size == 0) {
+        fprintf(stderr, "ERROR: Can't read source xml\n");
+        goto out;
+    }
+
     char* e_pos = strstr(argv[argc - 1], ".e");
     if (e_pos == NULL) {
-        fprintf(stderr, "ERROR: File should have a '.e' extension\n");
-        return -1;
+        // Compress and scramble a file
+        dst_size = glaze(src, src_size, &dst);
+        if (dst_size == 0)
+            goto out;
+
+#if defined(CREATE_EXTRA_FILES)
+        snprintf(path, sizeof(path), "%s.glaze", argv[argc - 1]);
+        write_file(dst, dst_size, path, false);
+#endif
+
+#if defined(VALIDATE_CHECKSUM)
+        printf("UnGlaze: 0x%04x, src_size = 0x%04x\n", unglaze(dst, dst_size, src, src_size), src_size);
+#endif
+
+        // Scramble the Glaze compressed file
+        snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
+        // Make sure that the required_size parameter for scrambling is set to the LARGEST
+        // of compressed and uncompressed sizes to avoid buffer overflows in the game!
+        if (!scramble(dst, dst_size, path, &seeds, max(src_size, dst_size)))
+            goto out;
+
+        r = 0;
+    } else {
+        // Decode a file
+        if (((src_size % 4) != 0) || (src_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
+            fprintf(stderr, "ERROR: Invalid file size\n");
+            goto out;
+        }
+
+        // Descramble the data
+        uint32_t payload_size = unscramble(src, src_size, &seeds, &dst_size);
+        if ((payload_size == 0) || (dst_size == 0))
+            goto out;
+
+#if defined(CREATE_EXTRA_FILES)
+        snprintf(path, sizeof(path), "%s.glaze", argv[argc - 1]);
+        write_file(&src[E_HEADER_SIZE], payload_size, path, false);
+#endif
+
+#if defined(VALIDATE_CHECKSUM)
+        // "We can rebuild (it), we have the technology."
+        snprintf(path, sizeof(path), "%s.rebuilt", argv[argc - 1]);
+        scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, dst_size);
+#endif
+
+        // Uncompress descrambled data
+        dst = malloc(dst_size);
+        if (dst == NULL)
+            goto out;
+        if (unglaze(&src[E_HEADER_SIZE], payload_size, dst, dst_size) == 0) {
+            fprintf(stderr, "ERROR: Can't decompress file\n");
+            goto out;
+        }
+
+        *e_pos = 0;
+        if (!write_file(dst, dst_size, argv[argc - 1], true))
+            goto out;
+        r = 0;
     }
-
-    uint32_t src_size = read_file(argv[argc - 1], &src);
-    if ((src_size == 0) || ((src_size % 4) != 0) || (src_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
-        fprintf(stderr, "ERROR: Invalid file size");
-        goto out;
-    }
-
-    // Descramble the data
-    uint32_t dst_size;
-    uint32_t payload_size = unscramble(src, src_size, &seeds, &dst_size);
-    if ((payload_size == 0) || (dst_size == 0))
-        goto out;
-
-    // "We can rebuild (it), we have the technology."
-    snprintf(path, sizeof(path), "%s.rebuilt", argv[argc - 1]);
-    // Sophie's GrowData.xml.e checksum = 0x52ccbbab
-    scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, dst_size, 0x52ccbbab);
-
-    // Uncompress descrambled data
-    dst = malloc(dst_size);
-    if (dst == NULL)
-        goto out;
-    if (unglaze(&src[E_HEADER_SIZE], payload_size, dst, dst_size) != dst_size) {
-        fprintf(stderr, "ERROR: Can't decompress file");
-        goto out;
-    }
-
-    snprintf(path, sizeof(path), "%s.xml", argv[argc - 1]);
-    if (!write_file(dst, dst_size, path))
-        goto out;
 
     // What a wild ride it has been to get there...
     // Thank you Gust, for making the cracking of your "encryption"
     // even more interesting than playing your games! :)))
-    r = 0;
 
 out:
     free(dst);
     free(src);
+
+    if (r != 0) {
+        fflush(stdin);
+        printf("\nPress any key to continue...");
+        getchar();
+    }
 
     return r;
 }
