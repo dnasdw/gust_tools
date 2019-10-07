@@ -56,7 +56,7 @@
 // For Sophie's Marquee.xml.e
 //#define VALIDATE_CHECKSUM 0x92ca8716
 
-// #define CREATE_EXTRA_FILES
+//#define CREATE_EXTRA_FILES
 
 typedef struct {
     uint32_t main[3];
@@ -451,18 +451,8 @@ static uint32_t glaze(uint8_t* src, uint32_t src_size, uint8_t** dst)
     return compressed_size;
 }
 
-
-// IMPORTANT: The Atelier executables allocate a working buffer of size 'required_size'
-// for the decoding operation and, once they are done decompressing the data, zero it
-// using the computed size of the glaze stream.
-// Therefore, if you happen to have a glaze compressed stream that is LARGER than its
-// decompressed counterpart (our case for the files we re-encode), but set
-// 'required_size' to the decompressed size, the zeroing will OVERFLOW the allocated
-// buffer and result in a game crash.
-// TL;DR - Make sure that 'required_size' is set to the largest of the glaze compressed
-// file size or the uncompressed file size.
 static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
-                     uint32_t required_size)
+                     uint32_t working_size)
 {
     bool r = false;
     uint32_t checksum[3] = { 0, 0, 0 };
@@ -522,7 +512,7 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
 
     // Populate the header data
     setbe32(buf, 0x02);
-    setbe32(&buf[4], required_size);
+    setbe32(&buf[4], working_size);
 
     if (!write_file(buf, main_payload_size + E_HEADER_SIZE, path, true))
         goto out;
@@ -679,9 +669,14 @@ int main(int argc, char** argv)
 
         // Scramble the Glaze compressed file
         snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
-        // Make sure that the required_size parameter for scrambling is set to the LARGEST
-        // of compressed and uncompressed sizes to avoid buffer overflows in the game!
-        if (!scramble(dst, dst_size, path, &seeds, max(src_size, dst_size)))
+
+        // IMPORTANT: The Atelier executables allocate a working buffer of size 'working_size'
+        // for the decoding operation which must be at least the size of the uncompressed data
+        // or the size of the compressed stream plus the size of the bytecode table, whichever
+        // is largest (because this buffer will be zeroed for the size of the compressed stream
+        // plus the size of the bytecode table once decompression is complete).
+        uint32_t working_size = max(src_size, dst_size + getbe32(&dst[2 * sizeof(uint32_t)]));
+        if (!scramble(dst, dst_size, path, &seeds, working_size))
             goto out;
 
         r = 0;
