@@ -1,6 +1,9 @@
 # Gust Tools
 
-As set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
+[![Build status](https://img.shields.io/appveyor/ci/VitaSmith/gust-tools.svg?style=flat-square)](https://ci.appveyor.com/project/VitaSmith/gust-tools)
+[![Github stats](https://img.shields.io/github/downloads/VitaSmith/gust_tools/total.svg?style=flat-square)](https://github.com/VitaSmith/gust_tools/releases)
+
+A set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
 [_Atelier series_](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
 [_Blue Reflection_](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/),
 [_Toukiden series_](https://store.steampowered.com/search/?term=toukiden&category1=998), ...
@@ -8,10 +11,10 @@ As set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game 
 Utilities
 =========
 
-* `gust_pak`: Decrypts and unpacks a Gust `.pak` archive to the current directory.
-* `gust_elixir`: Unpacks a Gust `.elixir[.gz]` archive into a subdirectory.
-* `gust_g1t`: Unpacks a Gust `.g1t` texture archive into a subdirectory.
-* `gust_enc`: Unscrambles and uncompresses a Gust `.e` file into the current directory.
+* `gust_pak`: Decrypt and unpack a Gust `.pak` archive to the current directory.
+* `gust_elixir`: Unpack a Gust `.elixir[.gz]` archive into a subdirectory.
+* `gust_g1t`: Unpack a Gust `.g1t` texture archive into a subdirectory.
+* `gust_enc`: Encode or decode a Gust `.e` archive into the current directory.
 
 Notes
 -----
@@ -19,7 +22,7 @@ Notes
 `gust_pak` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it detects "A17" (32-bit) and "A18" (64-bit) formats
 automatically. It should therefore works with all of the Atelier PC ports (including _Atelier Sophie_) as well as _Blue Reflection_'s archives.
 
-`gust_enc` probably only works with _Atelier Sophie_ for now (since each game seems to use different scrambling seeds).
+`gust_enc` only works on the games where for which the scrambling seeds are known. See `gust_enc.json` for details.
 
 Building
 ========

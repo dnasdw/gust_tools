@@ -4,8 +4,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.29318.209
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gust_pak", ".vs\gust_pak.vcxproj", "{207C1918-F4CE-4285-A1C0-1BA91085D15B}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gust_elixir", ".vs\gust_elixir.vcxproj", "{A7809FFE-461D-48F3-BA53-6A92B3E374D0}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gust_g1t", ".vs\gust_g1t.vcxproj", "{3926ABBF-9DD4-4CD6-BF5F-6FBF942B7F8D}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gust_enc", ".vs\gust_enc.vcxproj", "{A634DC8E-CE9D-4154-9C73-FC0E5713C563}"
 EndProject
 Global

@@ -54,7 +54,7 @@
 // For Sophie's GrowData.xml.e
 //#define VALIDATE_CHECKSUM   0x52ccbbab
 // For Sophie's Marquee.xml.e
-//#define VALIDATE_CHECKSUM 0x92ca8716
+//#define VALIDATE_CHECKSUM   0x92ca8716
 
 //#define CREATE_EXTRA_FILES
 
@@ -77,7 +77,7 @@ typedef struct {
 
 // Scramble individual bits between two semi-random bit positions within a slice.
 static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
-                          uint16_t slice_size, bool descramble)
+                          uint32_t slice_size, bool descramble)
 {
     // Table_size needs to be 8 * slice_size, to encompass all individual bit positions
     uint32_t x, table_size = slice_size << 3;
@@ -120,8 +120,12 @@ static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
         for (int32_t i = start_value; (i >= 0) && (i < (int32_t)min(table_size, chunk_size << 3)); i += increment) {
             p0 = (uint8_t)(scrambling_table[i] >> 3);
             b0 = (uint8_t)(scrambling_table[i] & 7);
+// Don't bug me Microsoft, you're wrong
+#pragma warning(push)
+#pragma warning(disable:6385)
             p1 = (uint8_t)(scrambling_table[i + 1] >> 3);
             b1 = (uint8_t)(scrambling_table[i + 1] & 7);
+#pragma warning(pop)
             // Keep the bit values
             v0 = (chunk[p0] & (1 << b0)) >> b0;
             v1 = (chunk[p1] & (1 << b1)) >> b1;
@@ -193,7 +197,7 @@ static bool rotating_scrambler(uint8_t* buf, uint32_t buf_size, seed_data* seeds
 
 /*
   The following functions deal with the compression algorithm used by Gust, which
-  looks like a derivative of LZ4 that I am calling 'Glaze', for "Gust Lempel–Ziv".
+  looks like a derivative of LZSS that I am calling 'Glaze', for "Gust Lempel–Ziv".
  */
 typedef struct {
     uint8_t* buffer;
@@ -451,6 +455,20 @@ static uint32_t glaze(uint8_t* src, uint32_t src_size, uint8_t** dst)
     return compressed_size;
 }
 
+#define ADLER32_MOD 65521
+static uint32_t adler32(const uint8_t* data, size_t size)
+{
+    uint32_t a = 1;
+    uint32_t b = 0;
+
+    for (size_t i = 0; i < size; i++) {
+        a = (a + data[i]) % ADLER32_MOD;
+        b = (b + a) % ADLER32_MOD;
+    }
+
+    return (b << 16) | a;
+}
+
 static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
                      uint32_t working_size)
 {
@@ -467,8 +485,7 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
 
     // Compute the last checksum
 #if !defined(VALIDATE_CHECKSUM)
-    for (uint32_t i = 0; i < payload_size; i += sizeof(uint32_t))
-        checksum[2] += getbe32(&payload[i]);
+    checksum[2] = adler32(payload, payload_size);
 #else
     checksum[2] = VALIDATE_CHECKSUM;
 #endif
@@ -729,7 +746,7 @@ out:
     if (r != 0) {
         fflush(stdin);
         printf("\nPress any key to continue...");
-        getchar();
+        (void)getchar();
     }
 
     return r;

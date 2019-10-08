@@ -65,6 +65,9 @@ static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 int main(int argc, char** argv)
 {
     int r = -1;
+    FILE* src = NULL;
+    uint8_t* buf = NULL;
+
     if (argc != 2) {
         printf("%s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
             "Dumps the Gust PAK format archive to the current directory.\n"
@@ -74,15 +77,15 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    FILE* src = fopen(argv[1], "rb");
+    src = fopen(argv[1], "rb");
     if (src == NULL) {
         fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[1]);
-        return -1;
+        goto out;
     }
 
     if (fread(&header, sizeof(header), 1, src) != 1) {
         fprintf(stderr, "ERROR: Can't read header");
-        return -1;
+        goto out;
     }
 
     if ((header.unknown1 != 0x20000) || (header.unknown2 != 0x10) || (header.unknown3 != 0x0D)) {
@@ -95,13 +98,13 @@ int main(int argc, char** argv)
     entries64 = calloc(header.nb_entries, sizeof(pak_entry64));
     if (entries64 == NULL) {
         fprintf(stderr, "ERROR: Can't allocate entries\n");
-        return -1;
+        goto out;
     }
 
     if (fread(entries64, sizeof(pak_entry64), header.nb_entries, src) != header.nb_entries) {
         fprintf(stderr, "ERROR: Can't read PAK header\n");
         free(entries64);
-        return -1;
+        goto out;
     }
 
     // Detect if we are dealing with 32 or 64-bit pak entries by checking
@@ -123,7 +126,6 @@ int main(int argc, char** argv)
     printf("Detected %s PAK format\n\n", is_pak32 ? "A17/32-bit" : "A18/64-bit");
 
     char path[256];
-    uint8_t* buf = NULL;
     bool skip_decode;
     int64_t file_data_offset = sizeof(pak_header) + (int64_t)header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
     printf("OFFSET    SIZE     NAME\n");
@@ -185,6 +187,14 @@ int main(int argc, char** argv)
 out:
     free(buf);
     free(entries64);
-    fclose(src);
+    if (src != NULL)
+        fclose(src);
+
+    if (r != 0) {
+        fflush(stdin);
+        printf("\nPress any key to continue...");
+        (void)getchar();
+    }
+
     return r;
 }

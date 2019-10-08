@@ -54,29 +54,30 @@ typedef struct {
 
 int main(int argc, char** argv)
 {
+    int r = -1;
     uint8_t* buf = NULL;
     uint32_t zsize;
-    int r = -1;
-    const char* app_name = basename(argv[0]);
+    FILE* src = NULL;
+
     if (argc != 2) {
         printf("%s (c) 2019 VitaSmith\n\nUsage: %s <Gust elixir[.gz] file>\n\n"
             "Dumps the elixir format archive to the current directory.\n",
-            app_name, app_name);
-        return 0;
+            basename(argv[0]), basename(argv[0]));
+        goto out;
     }
 
     // Don't bother checking for case or if these extensions are really at the end
     char* elixir_pos = strstr(argv[1], ".elixir");
     if (elixir_pos == NULL) {
         fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");
-        return -1;
+        goto out;
     }
     char* gz_pos = strstr(argv[1], ".gz");
 
-    FILE* src = fopen(argv[1], "rb");
+    src = fopen(argv[1], "rb");
     if (src == NULL) {
         fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[1]);
-        return -1;
+        goto out;
     }
 
     // Some elixir.gz files are actually uncompressed versions
@@ -190,24 +191,23 @@ int main(int argc, char** argv)
         if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
             continue;
         snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
-        FILE* dst = fopen(path, "wb");
-        if (dst == NULL) {
-            fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
+        if (!write_file(&buf[entry->offset], entry->size, path, false))
             goto out;
-        }
-        if (fwrite(&buf[entry->offset], 1, entry->size, dst) != entry->size) {
-            fprintf(stderr, "ERROR: Can't write file '%s'\n", path);
-            fclose(dst);
-            goto out;
-        }
         printf("%08x %08x %s\n", entry->offset, entry->size, path);
-        fclose(dst);
     }
 
     r = 0;
 
 out:
     free(buf);
-    fclose(src);
+    if (src != NULL)
+        fclose(src);
+
+    if (r != 0) {
+        fflush(stdin);
+        printf("\nPress any key to continue...");
+        (void)getchar();
+    }
+
     return r;
 }

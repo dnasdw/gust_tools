@@ -92,28 +92,29 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
 
 int main(int argc, char** argv)
 {
+    int r = -1;
+    FILE* src = NULL;
     uint8_t* buf = NULL;
     uint32_t magic;
-    int r = -1;
-    const char* app_name = basename(argv[0]);
+
     if (argc != 2) {
         printf("%s (c) 2019 VitaSmith\n\nUsage: %s <file.g1t>\n\n"
             "Dumps G1T textures to the current directory.\n",
-            app_name, app_name);
-        return 0;
+            basename(argv[0]), basename(argv[0]));
+        goto out;
     }
 
     // Don't bother checking for case or if these extensions are really at the end
     char* g1t_pos = strstr(argv[1], ".g1t");
     if (g1t_pos == NULL) {
         fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
-        return -1;
+        goto out;
     }
 
-    FILE* src = fopen(argv[1], "rb");
+    src = fopen(argv[1], "rb");
     if (src == NULL) {
         fprintf(stderr, "ERROR: Can't open file '%s'", argv[1]);
-        return -1;
+        goto out;
     }
 
     if (fread(&magic, sizeof(magic), 1, src) != 1) {
@@ -261,6 +262,14 @@ int main(int argc, char** argv)
 
 out:
     free(buf);
-    fclose(src);
+    if (src != NULL)
+        fclose(src);
+
+    if (r != 0) {
+        fflush(stdin);
+        printf("\nPress any key to continue...");
+        (void)getchar();
+    }
+
     return r;
 }
