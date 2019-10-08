@@ -3,7 +3,9 @@ image: Visual Studio 2019
 skip_non_tags: true
 
 build_script:
-  ps: msbuild gust_tools.sln /m /p:Configuration=Release /p:Platform=x86 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+  ps: |-
+      set ExternalCompilerOptions=/DGUST_TOOLS_VERSION=$env:APPVEYOR_REPO_TAG_NAME
+      msbuild gust_tools.sln /m /p:Configuration=Release /p:Platform=x86 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
   ps: 7z a gust_tools.zip .\x86\Release\*.exe *.json README.md LICENSE.txt

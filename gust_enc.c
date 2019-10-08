@@ -620,8 +620,9 @@ int main(int argc, char** argv)
     int r = -1;
     const char* app_name = basename(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
-        printf("%s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file.e>\n\n"
-            "Encode or decode a Gust .e file using the seeds for GAME_ID.\n", app_name, app_name);
+        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
+            "Encode or decode a Gust .e file using the seeds for GAME_ID.\n",
+            app_name, GUST_TOOLS_VERSION_STR, app_name);
         return 0;
     }
 

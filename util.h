@@ -22,6 +22,15 @@
 
 #pragma once
 
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
+
+#ifndef GUST_TOOLS_VERSION
+#define GUST_TOOLS_VERSION_STR "[DEV VERSION]"
+#else
+#define GUST_TOOLS_VERSION_STR STRINGIFY(GUST_TOOLS_VERSION)
+#endif
+
 #if defined(_WIN32)
 #include <windows.h>
 #define ftell64 _ftelli64

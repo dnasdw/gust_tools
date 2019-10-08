@@ -98,9 +98,9 @@ int main(int argc, char** argv)
     uint32_t magic;
 
     if (argc != 2) {
-        printf("%s (c) 2019 VitaSmith\n\nUsage: %s <file.g1t>\n\n"
+        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s <file.g1t>\n\n"
             "Dumps G1T textures to the current directory.\n",
-            basename(argv[0]), basename(argv[0]));
+            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
         goto out;
     }
 

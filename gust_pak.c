@@ -69,11 +69,11 @@ int main(int argc, char** argv)
     uint8_t* buf = NULL;
 
     if (argc != 2) {
-        printf("%s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
+        printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\nUsage: %s <Gust PAK file>\n\n"
             "Dumps the Gust PAK format archive to the current directory.\n"
             "If unpacked to the game directory, you can remove the .pak file\n"
             "and it will use the unpacked assets. Have fun, modders!\n",
-            basename(argv[0]), basename(argv[0]));
+            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
         return 0;
     }
 

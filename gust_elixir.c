@@ -60,9 +60,9 @@ int main(int argc, char** argv)
     FILE* src = NULL;
 
     if (argc != 2) {
-        printf("%s (c) 2019 VitaSmith\n\nUsage: %s <Gust elixir[.gz] file>\n\n"
+        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s <Gust elixir[.gz] file>\n\n"
             "Dumps the elixir format archive to the current directory.\n",
-            basename(argv[0]), basename(argv[0]));
+            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
         goto out;
     }
 
