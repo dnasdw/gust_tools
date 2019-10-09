@@ -34,4 +34,4 @@ if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%.exe
 
 :out
-pause
+if %ERRORLEVEL% neq 0 pause

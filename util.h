@@ -38,6 +38,9 @@
 #if !defined(S_ISDIR)
 #define S_ISDIR(ST_MODE) (((ST_MODE) & _S_IFMT) == _S_IFDIR)
 #endif
+#if !defined(S_ISREG)
+#define S_ISREG(ST_MODE) (((ST_MODE) & _S_IFMT) == _S_IFREG)
+#endif
 #define CREATE_DIR(path) CreateDirectoryA(path, NULL)
 #define PATH_SEP '\\'
 #else
@@ -78,6 +81,18 @@ static __inline char* basename(const char* path)
 #define bswap_uint32 __builtin_bswap32
 #define bswap_uint64 __builtin_bswap64
 #endif
+
+// Returns the position of the msb. v should be nonzero
+static __inline uint32_t find_msb(uint32_t v)
+{
+#if defined (_MSC_VER)
+    DWORD pos;
+    _BitScanReverse(&pos, v);
+    return pos;
+#else
+    return 31- __builtin_clz(v);
+#endif
+}
 
 static __inline uint16_t getle16(const void* p)
 {
@@ -140,6 +155,9 @@ static __inline void setbe64(const void* p, const uint64_t v)
 
 bool create_path(char* path);
 
-bool write_file(const uint8_t* buf, const uint32_t size, const char* path, const bool create_backup);
+bool is_file(const char* path);
+bool is_directory(const char* path);
 
 uint32_t read_file(const char* path, uint8_t** buf);
+void create_backup(const char* path);
+bool write_file(const uint8_t* buf, const uint32_t size, const char* path, const bool backup);

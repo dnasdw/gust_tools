@@ -28,6 +28,7 @@
 
 #define G1TG_MAGIC              0x47315447  // "G1GT"
 #define G1T_TEX_EXTRA_FLAG      0x10000000
+#define json_object_get_uint32  (uint32_t)json_object_get_number
 
 #pragma pack(push, 1)
 typedef struct {
@@ -43,7 +44,7 @@ typedef struct {
 // This is followed by uint32_t extra_flags[nb_textures]
 
 typedef struct {
-    uint8_t     discard : 4;
+    uint8_t     zero : 4;       // Always 0x0
     uint8_t     mipmaps : 4;
     uint8_t     type;
     uint8_t     dx : 4;
@@ -93,177 +94,306 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
 int main(int argc, char** argv)
 {
     int r = -1;
-    FILE* src = NULL;
+    FILE *file = NULL;
     uint8_t* buf = NULL;
     uint32_t magic;
+    char path[256];
+    JSON_Value* json = NULL;
 
     if (argc != 2) {
-        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s <file.g1t>\n\n"
-            "Dumps G1T textures to the current directory.\n",
+        printf("%s %s (c) 2019 VitaSmith\n\n"
+            "Usage: %s <file or directory>\n\n"
+            "Extracts (file) or recreates (directory) a Gust .g1t texture archive.\n\n"
+            "This application will also create a backup (.bak) of the original, when the target\n"
+            "is being overwritten for the first time.\n",
             basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
-        goto out;
+        return 0;
     }
 
-    // Don't bother checking for case or if these extensions are really at the end
-    char* g1t_pos = strstr(argv[1], ".g1t");
-    if (g1t_pos == NULL) {
-        fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
-        goto out;
-    }
-
-    src = fopen(argv[1], "rb");
-    if (src == NULL) {
-        fprintf(stderr, "ERROR: Can't open file '%s'", argv[1]);
-        goto out;
-    }
-
-    if (fread(&magic, sizeof(magic), 1, src) != 1) {
-        fprintf(stderr, "ERROR: Can't read from '%s'", argv[1]);
-        goto out;
-    }
-    if (magic != G1TG_MAGIC) {
-        fprintf(stderr, "ERROR: Not a G1T file (bad magic)");
-        goto out;
-    }
-    fseek(src, 0L, SEEK_END);
-    uint32_t g1t_size = (uint32_t)ftell(src);
-    fseek(src, 0L, SEEK_SET);
-
-    buf = malloc(g1t_size);
-    if (buf == NULL)
-        goto out;
-    if (fread(buf, 1, g1t_size, src) != g1t_size) {
-        fprintf(stderr, "ERROR: Can't read file");
-        goto out;
-    }
-
-    g1t_header* hdr = (g1t_header*)buf;
-    if (hdr->total_size != g1t_size) {
-        fprintf(stderr, "ERROR: File size mismatch\n");
-        goto out;
-    }
-    if ((hdr->version[0] != '0') || (hdr->version[2] != '0') ||
-        ((hdr->version[1] != '5') && (hdr->version[1] != '6')) ||
-        (hdr->version[3] != '0')) {
-        fprintf(stderr, "ERROR: Unsupported G1T version %c%c.%c%x\n",
-            hdr->version[1], hdr->version[2], hdr->version[0], hdr->version[0]);
-        goto out;
-    }
-    if (hdr->extra_size != 0) {
-        fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
-        goto out;
-    }
-
-    uint32_t* offset_table = (uint32_t*)&buf[hdr->header_size];
-
-    // Keep the information required to recreate the archive in a JSON file
-    JSON_Value* json_val = json_value_init_object();
-    JSON_Object* json_obj = json_value_get_object(json_val);
-    json_object_set_string(json_obj, "name", argv[1]);
-    char version[5];
-    for (int i = 0; i < 4; i++)
-        version[i] = hdr->version[i];
-    version[4] = 0;
-    json_object_set_string(json_obj, "version", version);
-    json_object_set_number(json_obj, "nb_textures", hdr->nb_textures);
-    json_object_set_number(json_obj, "flags", hdr->flags);
-    json_object_set_number(json_obj, "extra_size", hdr->extra_size);
-
-    g1t_pos[0] = 0;
-    if (!create_path(argv[1]))
-        goto out;
-
-    char path[256];
-    JSON_Value* json_flags_array_val = json_value_init_array();
-    JSON_Array* json_flags_array_obj = json_value_get_array(json_flags_array_val);
-    JSON_Value* json_textures_array_val = json_value_init_array();
-    JSON_Array* json_textures_array_obj = json_value_get_array(json_textures_array_val);
-
-    printf("OFFSET   SIZE     NAME\n");
-    for (uint32_t i = 0; i < hdr->nb_textures; i++) {
-        // There's an array of flags after the header
-        json_array_append_number(json_flags_array_obj, getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
-        uint32_t pos = hdr->header_size + offset_table[i];
-        g1t_tex_header* tex = (g1t_tex_header*) &buf[pos];
-        JSON_Value* json_texture_val = json_value_init_object();
-        JSON_Object* json_texture_obj = json_value_get_object(json_texture_val);
-        snprintf(path, sizeof(path), "%03d.dds", i);
-        json_object_set_string(json_texture_obj, "name", path);
-        json_object_set_number(json_texture_obj, "type", tex->type);
-        json_object_set_number(json_texture_obj, "flags", tex->flags);
-        uint32_t width = 1 << tex->dx;
-        uint32_t height = 1 << tex->dy;
-        uint32_t texture_format, bits_per_pixel;
-        switch (tex->type) {
-        case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
-        case 0x08: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
-        case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
-        case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
-        case 0x5F: texture_format = DDS_FORMAT_BC7; bits_per_pixel = 8; break;
-        default:
-            fprintf(stderr, "ERROR: Unsupported texture type (0x%02X)\n", tex->type);
-            continue;
+    if (is_directory(argv[1])) {
+        snprintf(path, sizeof(path), "%s%cg1t.json", argv[1], PATH_SEP);
+        if (!is_file(path)) {
+            fprintf(stderr, "ERROR: '%s' does not exist\n", path);
+            goto out;
         }
-        uint32_t highest_mipmap_size = (width * height * bits_per_pixel) / 8;
-        uint32_t texture_size = highest_mipmap_size;
-        for (int j = 0; j < tex->mipmaps - 1; j++)
-            texture_size += highest_mipmap_size / (4 << (j * 2));
-        snprintf(path, sizeof(path), "%s%c%03d.dds", argv[1], PATH_SEP, i);
-        printf("%08x %08x %s (%dx%d) [%d]\n", hdr->header_size + offset_table[i],
-            ((i + 1 == hdr->nb_textures) ? g1t_size : offset_table[i + 1]) - offset_table[i],
-            path, width, height, tex->mipmaps);
-        FILE* dst = fopen(path, "wb");
-        if (dst == NULL) {
-            fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
-            continue;
+        json = json_parse_file_with_comments(path);
+        if (json == NULL) {
+            fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
+            goto out;
         }
-        uint32_t dds_magic = DDS_MAGIC;
-        if (fwrite(&dds_magic, sizeof(dds_magic), 1, dst) != 1) {
-            fprintf(stderr, "ERROR: Can't write magic\n");
-            fclose(dst);
-            continue;
+        g1t_header header = { 0 };
+        const char* filename = json_object_get_string(json_object(json), "name");
+        const char* version = json_object_get_string(json_object(json), "version");
+        if ((filename == NULL) || (version == NULL))
+            goto out;
+        create_backup(filename);
+        file = fopen(filename, "wb+");
+        if (file == NULL) {
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
+            goto out;
         }
-        if (write_dds_header(dst, texture_format, width, height, tex->mipmaps) != 1) {
-            fprintf(stderr, "ERROR: Can't write DDS header\n");
-            fclose(dst);
-            continue;
+        header.magic = G1TG_MAGIC;
+        memcpy(header.version, version, strlen(version));
+        header.total_size = 0;  // To be rewritten when we're done
+        header.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
+        header.flags = json_object_get_uint32(json_object(json), "flags");
+        header.extra_size = json_object_get_uint32(json_object(json), "extra_size");
+        header.header_size = sizeof(header) + header.nb_textures * sizeof(uint32_t);
+        if (fwrite(&header, sizeof(header), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't write header\n");
+            goto out;
         }
-        pos += sizeof(g1t_tex_header);
-        if (tex->flags & G1T_TEX_EXTRA_FLAG) {
-            uint32_t size = getle32(&buf[pos]);
-            assert(pos + size < g1t_size);
-            if ((size == 0) || (size % 4 != 0)) {
-                fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%04x\n", size);
-            } else {
-                JSON_Value* json_extra_array_val = json_value_init_array();
-                JSON_Array* json_extra_array_obj = json_value_get_array(json_extra_array_val);
-                for (uint32_t j = 0; j < size; j += 4)
-                    json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
-                json_object_set_value(json_texture_obj, "extra_data", json_extra_array_val);
+
+        JSON_Array* extra_flags_array = json_object_get_array(json_object(json), "extra_flags");
+        if (json_array_get_count(extra_flags_array) != header.nb_textures) {
+            fprintf(stderr, "ERROR: number of extra flags doesn't match number of textures\n");
+            goto out;
+        }
+        for (size_t i = 0; i < header.nb_textures; i++) {
+            uint32_t extra_flag = (uint32_t)json_array_get_number(extra_flags_array, i);
+            if (fwrite(&extra_flag, sizeof(uint32_t), 1, file) != 1) {
+                fprintf(stderr, "ERROR: Can't write extra flags\n");
+                goto out;
             }
-            pos += size;
         }
-        if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
-            fprintf(stderr, "ERROR: Can't write DDS data\n");
+
+        uint32_t* tex_offset = calloc(header.nb_textures, sizeof(uint32_t));
+        tex_offset[0] = header.nb_textures * sizeof(uint32_t);
+        if (fwrite(tex_offset, header.nb_textures * sizeof(uint32_t), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't write texture offsets\n");
+            goto out;
+        }
+
+        JSON_Array* textures_array = json_object_get_array(json_object(json), "textures");
+        if (json_array_get_count(textures_array) != header.nb_textures) {
+            fprintf(stderr, "ERROR: number of textures in array doesn't match\n");
+            goto out;
+        }
+        uint32_t next_offset = header.nb_textures * sizeof(uint32_t);
+        for (size_t i = 0; i < header.nb_textures; i++) {
+            JSON_Object* texture_entry = json_array_get_object(textures_array, i);
+            g1t_tex_header tex = { 0 };
+            tex.type = (uint8_t)json_object_get_number(texture_entry, "type");
+            tex.flags = json_object_get_uint32(texture_entry, "flags");
+            printf("Adding %s\n", json_object_get_string(texture_entry, "name"));
+            // Read the DDS file
+            snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, json_object_get_string(texture_entry, "name"));
+            buf = NULL;
+            uint32_t dds_size = read_file(path, &buf);
+            if (dds_size < sizeof(DDS_HEADER) + 16)
+                goto out;
+            if (*((uint32_t*)buf) != DDS_MAGIC) {
+                fprintf(stderr, "ERROR: '%s' is not a DDS file\n", path);
+                goto out;
+            }
+            DDS_HEADER* dds_header = (DDS_HEADER*)&buf[sizeof(uint32_t)];
+            dds_size -= sizeof(uint32_t) + sizeof(DDS_HEADER);
+            // We may have a DX10 additional header
+            if (dds_header->ddspf.fourCC == get_fourCC(DDS_FORMAT_DX10))
+                dds_size -= sizeof(DDS_HEADER_DXT10);
+            tex.mipmaps = (uint8_t)dds_header->mipMapCount;
+            tex.dx = (uint8_t)find_msb(dds_header->width);
+            tex.dy = (uint8_t)find_msb(dds_header->height);
+ 
+            // Write header
+            if (fwrite(&tex, sizeof(tex), 1, file) != 1) {
+                fprintf(stderr, "ERROR: Can't write texture header\n");
+                goto out;
+            }
+            next_offset += sizeof(g1t_tex_header);
+            // Write extra data
+            if (tex.flags & G1T_TEX_EXTRA_FLAG) {
+                JSON_Array* extra_data_array = json_object_get_array(texture_entry, "extra_data");
+                for (size_t j = 0; j < json_array_get_count(extra_data_array); j++) {
+                    uint32_t extra_data = (uint32_t)json_array_get_number(extra_data_array, j);
+                    if (fwrite(&extra_data, sizeof(uint32_t), 1, file) != 1) {
+                        fprintf(stderr, "ERROR: Can't write extra data\n");
+                        goto out;
+                    }
+                    next_offset += sizeof(uint32_t);
+                }
+            }
+            // Write texture
+            if (fwrite(&dds_header[1], 1, dds_size, file) != dds_size) {
+                fprintf(stderr, "ERROR: Can't write texture data\n");
+                goto out;
+            }
+            free(buf);
+            buf = NULL;
+            next_offset += dds_size;
+            if (i < header.nb_textures - 1)
+                tex_offset[i + 1] = next_offset;
+        }
+        // Update total size
+        uint32_t total_size = ftell(file);
+        fseek(file, 2 * sizeof(uint32_t), SEEK_SET);
+        if (fwrite(&total_size, sizeof(uint32_t), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't update total size\n");
+            goto out;
+        }
+        // Update offset table
+        fseek(file, sizeof(header) + header.nb_textures * sizeof(uint32_t), SEEK_SET);
+        if (fwrite(tex_offset, sizeof(uint32_t), header.nb_textures, file) != header.nb_textures) {
+            fprintf(stderr, "ERROR: Can't update texture offsets\n");
+            goto out;
+        }
+        r = 0;
+    } else {
+        char* g1t_pos = strstr(argv[1], ".g1t");
+        if (g1t_pos == NULL) {
+            fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
+            goto out;
+        }
+
+        file = fopen(argv[1], "rb");
+        if (file == NULL) {
+            fprintf(stderr, "ERROR: Can't open file '%s'", argv[1]);
+            goto out;
+        }
+
+        if (fread(&magic, sizeof(magic), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't read from '%s'", argv[1]);
+            goto out;
+        }
+        if (magic != G1TG_MAGIC) {
+            fprintf(stderr, "ERROR: Not a G1T file (bad magic)");
+            goto out;
+        }
+        fseek(file, 0L, SEEK_END);
+        uint32_t g1t_size = (uint32_t)ftell(file);
+        fseek(file, 0L, SEEK_SET);
+
+        buf = malloc(g1t_size);
+        if (buf == NULL)
+            goto out;
+        if (fread(buf, 1, g1t_size, file) != g1t_size) {
+            fprintf(stderr, "ERROR: Can't read file");
+            goto out;
+        }
+
+        g1t_header* hdr = (g1t_header*)buf;
+        if (hdr->total_size != g1t_size) {
+            fprintf(stderr, "ERROR: File size mismatch\n");
+            goto out;
+        }
+        if ((hdr->version[0] != '0') || (hdr->version[2] != '0') ||
+            ((hdr->version[1] != '5') && (hdr->version[1] != '6')) ||
+            (hdr->version[3] != '0')) {
+            fprintf(stderr, "ERROR: Unsupported G1T version %c%c.%c%x\n",
+                hdr->version[1], hdr->version[2], hdr->version[0], hdr->version[0]);
+            goto out;
+        }
+        if (hdr->extra_size != 0) {
+            fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
+            goto out;
+        }
+
+        uint32_t* offset_table = (uint32_t*)&buf[hdr->header_size];
+
+        // Keep the information required to recreate the archive in a JSON file
+        json = json_value_init_object();
+        json_object_set_string(json_object(json), "name", argv[1]);
+        char version[5];
+        for (int i = 0; i < 4; i++)
+            version[i] = hdr->version[i];
+        version[4] = 0;
+        json_object_set_string(json_object(json), "version", version);
+        json_object_set_number(json_object(json), "nb_textures", hdr->nb_textures);
+        json_object_set_number(json_object(json), "flags", hdr->flags);
+        json_object_set_number(json_object(json), "extra_size", hdr->extra_size);
+
+        g1t_pos[0] = 0;
+        if (!create_path(argv[1]))
+            goto out;
+
+        JSON_Value* json_flags_array = json_value_init_array();
+        JSON_Value* json_textures_array = json_value_init_array();
+
+        printf("OFFSET   SIZE     NAME\n");
+        for (uint32_t i = 0; i < hdr->nb_textures; i++) {
+            // There's an array of flags after the header
+            json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
+            uint32_t pos = hdr->header_size + offset_table[i];
+            g1t_tex_header* tex = (g1t_tex_header*)&buf[pos];
+            JSON_Value* json_texture = json_value_init_object();
+            snprintf(path, sizeof(path), "%03d.dds", i);
+            json_object_set_string(json_object(json_texture), "name", path);
+            json_object_set_number(json_object(json_texture), "type", tex->type);
+            json_object_set_number(json_object(json_texture), "flags", tex->flags);
+            uint32_t width = 1 << tex->dx;
+            uint32_t height = 1 << tex->dy;
+            uint32_t texture_format, bits_per_pixel;
+            switch (tex->type) {
+            case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
+            case 0x08: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
+            case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
+            case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
+            case 0x5F: texture_format = DDS_FORMAT_BC7; bits_per_pixel = 8; break;
+            default:
+                fprintf(stderr, "ERROR: Unsupported texture type (0x%02X)\n", tex->type);
+                continue;
+            }
+            uint32_t highest_mipmap_size = (width * height * bits_per_pixel) / 8;
+            uint32_t texture_size = highest_mipmap_size;
+            for (int j = 0; j < tex->mipmaps - 1; j++)
+                texture_size += highest_mipmap_size / (4 << (j * 2));
+            snprintf(path, sizeof(path), "%s%c%03d.dds", argv[1], PATH_SEP, i);
+            printf("%08x %08x %s (%dx%d) [%d]\n", hdr->header_size + offset_table[i],
+                ((i + 1 == hdr->nb_textures) ? g1t_size : offset_table[i + 1]) - offset_table[i],
+                path, width, height, tex->mipmaps);
+            FILE* dst = fopen(path, "wb");
+            if (dst == NULL) {
+                fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
+                continue;
+            }
+            uint32_t dds_magic = DDS_MAGIC;
+            if (fwrite(&dds_magic, sizeof(dds_magic), 1, dst) != 1) {
+                fprintf(stderr, "ERROR: Can't write magic\n");
+                fclose(dst);
+                continue;
+            }
+            if (write_dds_header(dst, texture_format, width, height, tex->mipmaps) != 1) {
+                fprintf(stderr, "ERROR: Can't write DDS header\n");
+                fclose(dst);
+                continue;
+            }
+            pos += sizeof(g1t_tex_header);
+            if (tex->flags & G1T_TEX_EXTRA_FLAG) {
+                uint32_t size = getle32(&buf[pos]);
+                assert(pos + size < g1t_size);
+                if ((size == 0) || (size % 4 != 0)) {
+                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%04x\n", size);
+                } else {
+                    JSON_Value* json_extra_array_val = json_value_init_array();
+                    JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);
+                    for (uint32_t j = 0; j < size; j += 4)
+                        json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
+                    json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
+                }
+                pos += size;
+            }
+            if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
+                fprintf(stderr, "ERROR: Can't write DDS data\n");
+                fclose(dst);
+                continue;
+            }
             fclose(dst);
-            continue;
+            json_array_append_value(json_array(json_textures_array), json_texture);
         }
-        fclose(dst);
-        json_array_append_value(json_textures_array_obj, json_texture_val);
+
+        json_object_set_value(json_object(json), "extra_flags", json_flags_array);
+        json_object_set_value(json_object(json), "textures", json_textures_array);
+        snprintf(path, sizeof(path), "%s%cg1t.json", argv[1], PATH_SEP);
+        json_serialize_to_file_pretty(json, path);
+
+        r = 0;
     }
-
-    json_object_set_value(json_obj, "extra_flags", json_flags_array_val);
-    json_object_set_value(json_obj, "textures", json_textures_array_val);
-    snprintf(path, sizeof(path), "%s%c.g1t", argv[1], PATH_SEP);
-    json_serialize_to_file_pretty(json_val, path);
-    json_value_free(json_val);
-
-    r = 0;
 
 out:
+    json_value_free(json);
     free(buf);
-    if (src != NULL)
-        fclose(src);
+    if (file != NULL)
+        fclose(file);
 
     if (r != 0) {
         fflush(stdin);

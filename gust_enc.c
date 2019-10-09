@@ -621,20 +621,23 @@ int main(int argc, char** argv)
     const char* app_name = basename(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
         printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
-            "Encode or decode a Gust .e file using the seeds for GAME_ID.\n",
-            app_name, GUST_TOOLS_VERSION_STR, app_name);
+            "Encode or decode a Gust .e file.\n\n"
+            "If GAME_ID is not provided, then the default game ID from '%s.json' is used.\n"
+            "This application will also create a backup (.bak) of the original, when the target\n"
+            "is being overwritten for the first time.\n",
+            app_name, GUST_TOOLS_VERSION_STR, app_name, app_name);
         return 0;
     }
 
     // Populate the descrambling seeds from the JSON file
     snprintf(path, sizeof(path), "%s.json", app_name);
-    JSON_Value* json_val = json_parse_file_with_comments(path);
-    if (json_val == NULL) {
+    JSON_Value* json = json_parse_file_with_comments(path);
+    if (json == NULL) {
         fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
         goto out;
     }
-    const char* seeds_id = (argc == 3) ? &argv[1][1] : json_object_get_string(json_object(json_val), "seeds_id");
-    JSON_Array* seeds_array = json_object_get_array(json_object(json_val), "seeds");
+    const char* seeds_id = (argc == 3) ? &argv[1][1] : json_object_get_string(json_object(json), "seeds_id");
+    JSON_Array* seeds_array = json_object_get_array(json_object(json), "seeds");
     JSON_Object* seeds_entry = NULL;
     for (size_t i = 0; i < json_array_get_count(seeds_array); i++) {
         seeds_entry = json_array_get_object(seeds_array, i);
@@ -644,7 +647,7 @@ int main(int argc, char** argv)
     }
     if (seeds_entry == NULL) {
         fprintf(stderr, "ERROR: Can't find the seeds for \"%s\" in '%s'\n", seeds_id, path);
-        json_value_free(json_val);
+        json_value_free(json);
         goto out;
     }
 
@@ -660,7 +663,7 @@ int main(int argc, char** argv)
         seeds.length[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "length"), i);
     }
     seeds.fence = (uint32_t)json_object_get_number(seeds_entry, "fence");
-    json_value_free(json_val);
+    json_value_free(json);
 
     // Read the source file
     src_size = read_file(argv[argc - 1], &src);

@@ -60,143 +60,147 @@ int main(int argc, char** argv)
     FILE* src = NULL;
 
     if (argc != 2) {
-        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s <Gust elixir[.gz] file>\n\n"
-            "Dumps the elixir format archive to the current directory.\n",
+        printf("%s %s (c) 2019 VitaSmith\n\n"
+            "Usage: %s <elixir[.gz] file>\n\n"
+            "Extract all the files from a Gust .elixir archive (compressed or not).\n",
             basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
-        goto out;
+        return 0;
     }
 
-    // Don't bother checking for case or if these extensions are really at the end
-    char* elixir_pos = strstr(argv[1], ".elixir");
-    if (elixir_pos == NULL) {
-        fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");
-        goto out;
-    }
-    char* gz_pos = strstr(argv[1], ".gz");
-
-    src = fopen(argv[1], "rb");
-    if (src == NULL) {
-        fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[1]);
-        goto out;
-    }
-
-    // Some elixir.gz files are actually uncompressed versions
-    if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
-        fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[1]);
-        goto out;
-    }
-    if ((zsize == EARC_MAGIC) && (gz_pos != NULL))
-        gz_pos = NULL;
-
-    fseek(src, 0L, SEEK_END);
-    size_t lxr_size = ftell(src);
-    fseek(src, 0L, SEEK_SET);
-
-    if (gz_pos != NULL) {
-        lxr_size *= 2;
-        buf = malloc(lxr_size);
-        if (buf == NULL)
+    if (is_directory(argv[1])) {
+        fprintf(stderr, "ERROR: Directory archiving is not implemented yet\n");
+    } else {
+        char* elixir_pos = strstr(argv[1], ".elixir");
+        if (elixir_pos == NULL) {
+            fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");
             goto out;
-        size_t pos = 0;
-        while (1) {
-            if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
-                fprintf(stderr, "ERROR: Can't read compressed stream size");
+        }
+        char* gz_pos = strstr(argv[1], ".gz");
+
+        src = fopen(argv[1], "rb");
+        if (src == NULL) {
+            fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[1]);
+            goto out;
+        }
+
+        // Some elixir.gz files are actually uncompressed versions
+        if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
+            fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[1]);
+            goto out;
+        }
+        if ((zsize == EARC_MAGIC) && (gz_pos != NULL))
+            gz_pos = NULL;
+
+        fseek(src, 0L, SEEK_END);
+        size_t lxr_size = ftell(src);
+        fseek(src, 0L, SEEK_SET);
+
+        if (gz_pos != NULL) {
+            lxr_size *= 2;
+            buf = malloc(lxr_size);
+            if (buf == NULL)
                 goto out;
-            }
-            if (zsize == 0)
-                break;
-            uint8_t* zbuf = malloc(zsize);
-            if (zbuf == NULL)
-                goto out;
-            if (fread(zbuf, 1, zsize, src) != zsize) {
-                fprintf(stderr, "ERROR: Can't read compressed stream");
-                free(zbuf);
-                goto out;
-            }
-            // Elixirs are deflated using a constant chunk size which simplifies overflow handling
-            if (pos + DEFAULT_CHUNK_SIZE > lxr_size) {
-                lxr_size *= 2;
-                uint8_t* old_buf = buf;
-                buf = realloc(buf, lxr_size);
-                if (buf == NULL) {
-                    fprintf(stderr, "ERROR: Can't increase buffer size\n");
-                    buf = old_buf;
+            size_t pos = 0;
+            while (1) {
+                if (fread(&zsize, sizeof(zsize), 1, src) != 1) {
+                    fprintf(stderr, "ERROR: Can't read compressed stream size");
                     goto out;
                 }
-            }
-            size_t s = tinfl_decompress_mem_to_mem(&buf[pos], lxr_size - pos, zbuf, zsize,
-                TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32);
-            if (s == 0) {
-                fprintf(stderr, "ERROR: Can't decompress stream");
+                if (zsize == 0)
+                    break;
+                uint8_t* zbuf = malloc(zsize);
+                if (zbuf == NULL)
+                    goto out;
+                if (fread(zbuf, 1, zsize, src) != zsize) {
+                    fprintf(stderr, "ERROR: Can't read compressed stream");
+                    free(zbuf);
+                    goto out;
+                }
+                // Elixirs are deflated using a constant chunk size which simplifies overflow handling
+                if (pos + DEFAULT_CHUNK_SIZE > lxr_size) {
+                    lxr_size *= 2;
+                    uint8_t* old_buf = buf;
+                    buf = realloc(buf, lxr_size);
+                    if (buf == NULL) {
+                        fprintf(stderr, "ERROR: Can't increase buffer size\n");
+                        buf = old_buf;
+                        goto out;
+                    }
+                }
+                size_t s = tinfl_decompress_mem_to_mem(&buf[pos], lxr_size - pos, zbuf, zsize,
+                    TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32);
+                if (s == 0) {
+                    fprintf(stderr, "ERROR: Can't decompress stream");
+                    goto out;
+                }
+                pos += s;
+            } while (zsize != 0);
+            lxr_size = pos;
+
+            //#define DECOMPRESS_ONLY
+#ifdef DECOMPRESS_ONLY
+            FILE* dst = NULL;
+            *gz_pos = 0;
+            dst = fopen(argv[1], "wb");
+            if (dst == NULL) {
+                fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
                 goto out;
             }
-            pos += s;
-        } while (zsize != 0);
-        lxr_size = pos;
-
-//#define DECOMPRESS_ONLY
-#ifdef DECOMPRESS_ONLY
-        FILE* dst = NULL;
-        *gz_pos = 0;
-        dst = fopen(argv[1], "wb");
-        if (dst == NULL) {
-            fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
-            goto out;
-        }
-        if (fwrite(buf, 1, lxr_size, dst) != lxr_size) {
-            fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[1]);
+            if (fwrite(buf, 1, lxr_size, dst) != lxr_size) {
+                fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[1]);
+                fclose(dst);
+                goto out;
+            }
+            printf("%08x %s\n", (uint32_t)lxr_size, argv[1]);
             fclose(dst);
+            r = 0;
             goto out;
-        }
-        printf("%08x %s\n", (uint32_t)lxr_size, argv[1]);
-        fclose(dst);
-        r = 0;
-        goto out;
 #endif
-    } else {
-        buf = malloc(lxr_size);
-        if (buf == NULL)
+        } else {
+            buf = malloc(lxr_size);
+            if (buf == NULL)
+                goto out;
+            if (fread(buf, 1, lxr_size, src) != lxr_size) {
+                fprintf(stderr, "ERROR: Can't read uncompressed data");
+                goto out;
+            }
+        }
+
+        // Now that have an uncompressed .elixir file, extract the files
+        *elixir_pos = 0;
+        if (!create_path(argv[1]))
             goto out;
-        if (fread(buf, 1, lxr_size, src) != lxr_size) {
-            fprintf(stderr, "ERROR: Can't read uncompressed data");
+
+        lxr_header* hdr = (lxr_header*)buf;
+        if (hdr->magic != EARC_MAGIC) {
+            fprintf(stderr, "ERROR: Not an elixir file (bad magic)\n");
             goto out;
         }
-    }
-
-    // Now that have an uncompressed .elixir file, extract the files
-    *elixir_pos = 0;
-    if (!create_path(argv[1]))
-        goto out;
-
-    lxr_header* hdr = (lxr_header*)buf;
-    if (hdr->magic != EARC_MAGIC) {
-        fprintf(stderr, "ERROR: Not an elixir file (bad magic)\n");
-        goto out;
-    }
-    if (hdr->version != 1) {
-        fprintf(stderr, "ERROR: Invalid elixir version (0x%08X)\n", hdr->version);
-        goto out;
-    }
-    if (sizeof(lxr_header) + hdr->nb_files * sizeof(lxr_entry) + hdr->total_size != lxr_size) {
-        fprintf(stderr, "ERROR: File size mismatch\n");
-        goto out;
-    }
-
-    char path[256];
-    printf("OFFSET   SIZE     NAME\n");
-    for (uint32_t i = 0; i < hdr->nb_files; i++) {
-        lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
-        assert(entry->offset + entry->size <= (uint32_t)lxr_size);
-        // Ignore "dummy" entries
-        if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
-            continue;
-        snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
-        if (!write_file(&buf[entry->offset], entry->size, path, false))
+        if (hdr->version != 1) {
+            fprintf(stderr, "ERROR: Invalid elixir version (0x%08X)\n", hdr->version);
             goto out;
-        printf("%08x %08x %s\n", entry->offset, entry->size, path);
-    }
+        }
+        if (sizeof(lxr_header) + hdr->nb_files * sizeof(lxr_entry) + hdr->total_size != lxr_size) {
+            fprintf(stderr, "ERROR: File size mismatch\n");
+            goto out;
+        }
 
-    r = 0;
+        char path[256];
+        printf("OFFSET   SIZE     NAME\n");
+        for (uint32_t i = 0; i < hdr->nb_files; i++) {
+            lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
+            assert(entry->offset + entry->size <= (uint32_t)lxr_size);
+            // Ignore "dummy" entries
+            if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
+                continue;
+            snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
+            if (!write_file(&buf[entry->offset], entry->size, path, false))
+                goto out;
+            printf("%08x %08x %s\n", entry->offset, entry->size, path);
+        }
+
+        r = 0;
+    }
 
 out:
     free(buf);
