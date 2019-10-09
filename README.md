@@ -11,10 +11,10 @@ A set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game a
 Utilities
 =========
 
-* `gust_pak`: Decrypt and unpack a Gust `.pak` archive to the current directory.
-* `gust_elixir`: Unpack a Gust `.elixir[.gz]` archive into a subdirectory.
-* `gust_g1t`: Unpack a Gust `.g1t` texture archive into a subdirectory.
-* `gust_enc`: Encode or decode a Gust `.e` archive into the current directory.
+* `gust_pak`: Unpack a Gust `.pak` archive.
+* `gust_elixir`: Unpack a Gust `.elixir[.gz]` archive.
+* `gust_g1t`: Unpack or repack a Gust `.g1t` texture archive.
+* `gust_enc`: Encode or decode a Gust `.e` archive.
 
 Notes
 -----
@@ -43,7 +43,7 @@ Modding games
 
 **IMPORTANT: YOU SHOULD BACK UP ALL GAME ARCHIVES AND FOLDERS BEFORE RUNNING THE UNPACKER**
 
-Most Gust game excutables are designed to use either packed assets, if a `.pak` archive is present, or the extracted assets, if
+Most Gust game executables are designed to use either packed assets, if a `.pak` archive is present, or the extracted assets, if
 a matching directory bearing the same name as the `.pak` is found. For that to work, you must however make sure that the `.pak`
 is not seen, as it has precedence over the directory.
 
@@ -71,4 +71,4 @@ Thanks
   inspiration on how to unpack the `.elixir` and `.g1t` formats.
 * _Rich Geldreich_ and others for the [miniz](https://github.com/richgel999/miniz) inflate/deflate library.
 * _Krzysztof Gabis_ for the [parson](http://kgabis.github.com/parson/) JSON parsing library.
-* _Gust_, for making games that are interesting enough to make one want to crack their encryption algorithms.
+* _Gust_, for making games that are interesting enough to make one want to crack their custom compression and encryption schemes. :grin:
