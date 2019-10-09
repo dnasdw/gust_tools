@@ -121,35 +121,36 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
             goto out;
         }
-        g1t_header header = { 0 };
+        g1t_header hdr = { 0 };
         const char* filename = json_object_get_string(json_object(json), "name");
         const char* version = json_object_get_string(json_object(json), "version");
         if ((filename == NULL) || (version == NULL))
             goto out;
+        printf("Creating '%s'...\n", filename);
         create_backup(filename);
         file = fopen(filename, "wb+");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
             goto out;
         }
-        header.magic = G1TG_MAGIC;
-        memcpy(header.version, version, strlen(version));
-        header.total_size = 0;  // To be rewritten when we're done
-        header.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
-        header.flags = json_object_get_uint32(json_object(json), "flags");
-        header.extra_size = json_object_get_uint32(json_object(json), "extra_size");
-        header.header_size = sizeof(header) + header.nb_textures * sizeof(uint32_t);
-        if (fwrite(&header, sizeof(header), 1, file) != 1) {
+        hdr.magic = G1TG_MAGIC;
+        memcpy(hdr.version, version, strlen(version));
+        hdr.total_size = 0;  // To be rewritten when we're done
+        hdr.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
+        hdr.flags = json_object_get_uint32(json_object(json), "flags");
+        hdr.extra_size = json_object_get_uint32(json_object(json), "extra_size");
+        hdr.header_size = sizeof(hdr) + hdr.nb_textures * sizeof(uint32_t);
+        if (fwrite(&hdr, sizeof(hdr), 1, file) != 1) {
             fprintf(stderr, "ERROR: Can't write header\n");
             goto out;
         }
 
         JSON_Array* extra_flags_array = json_object_get_array(json_object(json), "extra_flags");
-        if (json_array_get_count(extra_flags_array) != header.nb_textures) {
+        if (json_array_get_count(extra_flags_array) != hdr.nb_textures) {
             fprintf(stderr, "ERROR: number of extra flags doesn't match number of textures\n");
             goto out;
         }
-        for (size_t i = 0; i < header.nb_textures; i++) {
+        for (size_t i = 0; i < hdr.nb_textures; i++) {
             uint32_t extra_flag = (uint32_t)json_array_get_number(extra_flags_array, i);
             if (fwrite(&extra_flag, sizeof(uint32_t), 1, file) != 1) {
                 fprintf(stderr, "ERROR: Can't write extra flags\n");
@@ -157,25 +158,29 @@ int main(int argc, char** argv)
             }
         }
 
-        uint32_t* tex_offset = calloc(header.nb_textures, sizeof(uint32_t));
-        tex_offset[0] = header.nb_textures * sizeof(uint32_t);
-        if (fwrite(tex_offset, header.nb_textures * sizeof(uint32_t), 1, file) != 1) {
+        uint32_t* offset_table = calloc(hdr.nb_textures, sizeof(uint32_t));
+        offset_table[0] = hdr.nb_textures * sizeof(uint32_t);
+        if (fwrite(offset_table, hdr.nb_textures * sizeof(uint32_t), 1, file) != 1) {
             fprintf(stderr, "ERROR: Can't write texture offsets\n");
             goto out;
         }
 
         JSON_Array* textures_array = json_object_get_array(json_object(json), "textures");
-        if (json_array_get_count(textures_array) != header.nb_textures) {
+        if (json_array_get_count(textures_array) != hdr.nb_textures) {
             fprintf(stderr, "ERROR: number of textures in array doesn't match\n");
             goto out;
         }
-        uint32_t next_offset = header.nb_textures * sizeof(uint32_t);
-        for (size_t i = 0; i < header.nb_textures; i++) {
+
+        printf("OFFSET   SIZE     NAME");
+        for (size_t i = 0; i < strlen(argv[1]); i++)
+            putchar(' ');
+        printf("     DIMENSIONS MIPMAPS\n");
+        for (size_t i = 0; i < hdr.nb_textures; i++) {
+            offset_table[i] = ftell(file) - hdr.header_size;
             JSON_Object* texture_entry = json_array_get_object(textures_array, i);
             g1t_tex_header tex = { 0 };
             tex.type = (uint8_t)json_object_get_number(texture_entry, "type");
             tex.flags = json_object_get_uint32(texture_entry, "flags");
-            printf("Adding %s\n", json_object_get_string(texture_entry, "name"));
             // Read the DDS file
             snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, json_object_get_string(texture_entry, "name"));
             buf = NULL;
@@ -188,19 +193,18 @@ int main(int argc, char** argv)
             }
             DDS_HEADER* dds_header = (DDS_HEADER*)&buf[sizeof(uint32_t)];
             dds_size -= sizeof(uint32_t) + sizeof(DDS_HEADER);
-            // We may have a DX10 additional header
+            // We may have a DX10 additional hdr
             if (dds_header->ddspf.fourCC == get_fourCC(DDS_FORMAT_DX10))
                 dds_size -= sizeof(DDS_HEADER_DXT10);
             tex.mipmaps = (uint8_t)dds_header->mipMapCount;
             tex.dx = (uint8_t)find_msb(dds_header->width);
             tex.dy = (uint8_t)find_msb(dds_header->height);
- 
-            // Write header
+
+            // Write texture header
             if (fwrite(&tex, sizeof(tex), 1, file) != 1) {
                 fprintf(stderr, "ERROR: Can't write texture header\n");
                 goto out;
             }
-            next_offset += sizeof(g1t_tex_header);
             // Write extra data
             if (tex.flags & G1T_TEX_EXTRA_FLAG) {
                 JSON_Array* extra_data_array = json_object_get_array(texture_entry, "extra_data");
@@ -210,7 +214,6 @@ int main(int argc, char** argv)
                         fprintf(stderr, "ERROR: Can't write extra data\n");
                         goto out;
                     }
-                    next_offset += sizeof(uint32_t);
                 }
             }
             // Write texture
@@ -218,11 +221,13 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: Can't write texture data\n");
                 goto out;
             }
+            char dims[16];
+            snprintf(dims, sizeof(dims), "%dx%d", dds_header->width, dds_header->height);
+            printf("%08x %08x %s %-10s %d\n", hdr.header_size + offset_table[i],
+                (uint32_t)ftell(file) - offset_table[i] - hdr.header_size, path,
+                dims, dds_header->mipMapCount);
             free(buf);
             buf = NULL;
-            next_offset += dds_size;
-            if (i < header.nb_textures - 1)
-                tex_offset[i + 1] = next_offset;
         }
         // Update total size
         uint32_t total_size = ftell(file);
@@ -232,13 +237,14 @@ int main(int argc, char** argv)
             goto out;
         }
         // Update offset table
-        fseek(file, sizeof(header) + header.nb_textures * sizeof(uint32_t), SEEK_SET);
-        if (fwrite(tex_offset, sizeof(uint32_t), header.nb_textures, file) != header.nb_textures) {
+        fseek(file, sizeof(hdr) + hdr.nb_textures * sizeof(uint32_t), SEEK_SET);
+        if (fwrite(offset_table, sizeof(uint32_t), hdr.nb_textures, file) != hdr.nb_textures) {
             fprintf(stderr, "ERROR: Can't update texture offsets\n");
             goto out;
         }
         r = 0;
     } else {
+        printf("Extracting '%s'...\n", argv[1]);
         char* g1t_pos = strstr(argv[1], ".g1t");
         if (g1t_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
@@ -309,9 +315,12 @@ int main(int argc, char** argv)
         JSON_Value* json_flags_array = json_value_init_array();
         JSON_Value* json_textures_array = json_value_init_array();
 
-        printf("OFFSET   SIZE     NAME\n");
+        printf("OFFSET   SIZE     NAME");
+        for (size_t i = 0; i < strlen(argv[1]); i++)
+            putchar(' ');
+        printf("     DIMENSIONS MIPMAPS\n");
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
-            // There's an array of flags after the header
+            // There's an array of flags after the hdr
             json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
             uint32_t pos = hdr->header_size + offset_table[i];
             g1t_tex_header* tex = (g1t_tex_header*)&buf[pos];
@@ -338,9 +347,11 @@ int main(int argc, char** argv)
             for (int j = 0; j < tex->mipmaps - 1; j++)
                 texture_size += highest_mipmap_size / (4 << (j * 2));
             snprintf(path, sizeof(path), "%s%c%03d.dds", argv[1], PATH_SEP, i);
-            printf("%08x %08x %s (%dx%d) [%d]\n", hdr->header_size + offset_table[i],
+            char dims[16];
+            snprintf(dims, sizeof(dims), "%dx%d", width, height);
+            printf("%08x %08x %s %-10s %d\n", hdr->header_size + offset_table[i],
                 ((i + 1 == hdr->nb_textures) ? g1t_size : offset_table[i + 1]) - offset_table[i],
-                path, width, height, tex->mipmaps);
+                path, dims, tex->mipmaps);
             FILE* dst = fopen(path, "wb");
             if (dst == NULL) {
                 fprintf(stderr, "ERROR: Can't create file '%s'\n", path);

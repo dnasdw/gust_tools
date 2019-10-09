@@ -70,6 +70,7 @@ int main(int argc, char** argv)
     if (is_directory(argv[1])) {
         fprintf(stderr, "ERROR: Directory archiving is not implemented yet\n");
     } else {
+        printf("Extracting '%s'...\n", argv[1]);
         char* elixir_pos = strstr(argv[1], ".elixir");
         if (elixir_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");

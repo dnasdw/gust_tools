@@ -79,6 +79,7 @@ int main(int argc, char** argv)
     if (is_directory(argv[1])) {
         fprintf(stderr, "ERROR: Directory packing is not implemented yet\n");
     } else {
+        printf("Extracting '%s'...\n", argv[1]);
         src = fopen(argv[1], "rb");
         if (src == NULL) {
             fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[1]);

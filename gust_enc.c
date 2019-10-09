@@ -674,6 +674,8 @@ int main(int argc, char** argv)
 
     char* e_pos = strstr(argv[argc - 1], ".e");
     if (e_pos == NULL) {
+        printf("Encoding '%s'...\n", argv[argc - 1]);
+        snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
         // Compress and scramble a file
         dst_size = glaze(src, src_size, &dst);
         if (dst_size == 0)
@@ -689,8 +691,6 @@ int main(int argc, char** argv)
 #endif
 
         // Scramble the Glaze compressed file
-        snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
-
         // IMPORTANT: The Atelier executables allocate a working buffer of size 'working_size'
         // for the decoding operation which must be at least the size of the uncompressed data
         // or the size of the compressed stream plus the size of the bytecode table, whichever
@@ -702,6 +702,7 @@ int main(int argc, char** argv)
 
         r = 0;
     } else {
+        printf("Decoding '%s'...\n", argv[argc - 1]);
         // Decode a file
         if (((src_size % 4) != 0) || (src_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
             fprintf(stderr, "ERROR: Invalid file size\n");
