@@ -17,7 +17,7 @@ echo =^> %APP_NAME%.exe
 
 echo.
 set APP_NAME=gust_elixir
-cl.exe %APP_NAME%.c util.c miniz_tinfl.c /Fe%APP_NAME%
+cl.exe %APP_NAME%.c util.c parson.c miniz_tinfl.c miniz_tdef.c /Fe%APP_NAME%
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%
 

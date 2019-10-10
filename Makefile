@@ -10,7 +10,7 @@ OBJ1=${SRC1:.c=.o}
 DEP1=${SRC1:.c=.d}
 
 BIN2=gust_elixir
-SRC2=${BIN2}.c util.c miniz_tinfl.c
+SRC2=${BIN2}.c util.c parson.c miniz_tinfl.c miniz_tdef.c
 OBJ2=${SRC2:.c=.o}
 DEP2=${SRC2:.c=.d}
 

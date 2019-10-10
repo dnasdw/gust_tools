@@ -23,6 +23,9 @@
     <ClCompile Include="..\parson.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\miniz_tdef.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\util.h">
@@ -35,6 +38,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\parson.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\miniz_tdef.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -117,6 +117,7 @@ void create_backup(const char* path)
             else
                 fprintf(stderr, "WARNING: Could not create backup file '%s\n", backup_path);
         }
+        free(backup_path);
     }
 }
 

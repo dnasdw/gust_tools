@@ -31,6 +31,7 @@
 #define MINIZ_NO_ZLIB_APIS
 #define MINIZ_NO_MALLOC
 #include "miniz_tinfl.h"
+#include "miniz_tdef.h"
 
 #define EARC_MAGIC              0x45415243  // "EARC"
 #define DEFAULT_CHUNK_SIZE      0x4000
@@ -57,10 +58,11 @@ int main(int argc, char** argv)
 {
     int r = -1;
     char path[256];
-    uint8_t* buf = NULL;
+    uint8_t *buf = NULL, *zbuf = NULL;
     uint32_t zsize;
-    FILE* file = NULL;
+    FILE *file = NULL, *dst = NULL;
     JSON_Value* json = NULL;
+    tdefl_compressor* compressor = NULL;
 
     if (argc != 2) {
         printf("%s %s (c) 2019 VitaSmith\n\n"
@@ -88,9 +90,15 @@ int main(int argc, char** argv)
             goto out;
         printf("Creating '%s'...\n", filename);
         create_backup(filename);
-        file = fopen(filename, "wb+");
+        // Work with a temporary file if we're going to compress it
+        if (json_object_get_boolean(json_object(json), "compressed"))
+            snprintf(path, sizeof(path), "%s.tmp", filename);
+        else
+            strncpy(path, filename, sizeof(path));
+        path[sizeof(path) - 1] = 0;
+        file = fopen(path, "wb+");
         if (file == NULL) {
-            fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
             goto out;
         }
         lxr_header hdr = { 0 };
@@ -155,6 +163,55 @@ int main(int argc, char** argv)
         }
         free(table);
 
+        if (json_object_get_boolean(json_object(json), "compressed")) {
+            printf("Compressing...\n");
+            compressor = calloc(1, sizeof(tdefl_compressor));
+            if (compressor == NULL)
+                goto out;
+            dst = fopen(filename, "wb");
+            if (dst == NULL) {
+                fprintf(stderr, "ERROR: Can't create compressed file\n");
+                goto out;
+            }
+            fseek(file, 0, SEEK_SET);
+            buf = malloc(DEFAULT_CHUNK_SIZE);
+            zbuf = malloc(DEFAULT_CHUNK_SIZE);
+            while (1) {
+                size_t written = DEFAULT_CHUNK_SIZE;
+                size_t read = fread(buf, 1, DEFAULT_CHUNK_SIZE, file);
+                if (read == 0)
+                    break;
+                tdefl_status status = tdefl_init(compressor, NULL, NULL,
+                    TDEFL_WRITE_ZLIB_HEADER | TDEFL_COMPUTE_ADLER32 | 256);
+                if (status != TDEFL_STATUS_OKAY) {
+                    fprintf(stderr, "ERROR: Can't init compressor\n");
+                    goto out;
+                }
+                status = tdefl_compress(compressor, buf, &read, zbuf, &written, TDEFL_FINISH);
+                if (status != TDEFL_STATUS_DONE) {
+                    fprintf(stderr, "ERROR: Can't compress data\n");
+                    goto out;
+                }
+                if (fwrite(&written, sizeof(uint32_t), 1, dst) != 1) {
+                    fprintf(stderr, "ERROR: Can't write compressed stream size\n");
+                    goto out;
+                }
+                if (fwrite(zbuf, 1, written, dst) != written) {
+                    fprintf(stderr, "ERROR: Can't write compressed data\n");
+                    goto out;
+                }
+            }
+            uint32_t end_marker = 0;
+            if (fwrite(&end_marker, sizeof(uint32_t), 1, dst) != 1) {
+                fprintf(stderr, "ERROR: Can't write end marker\n");
+                goto out;
+            }
+            fclose(file);
+            file = NULL;
+            snprintf(path, sizeof(path), "%s.tmp", filename);
+            _unlink(path);
+        }
+
         r = 0;
     } else {
         printf("Extracting '%s'...\n", argv[1]);
@@ -180,50 +237,50 @@ int main(int argc, char** argv)
             gz_pos = NULL;
 
         fseek(file, 0L, SEEK_END);
-        size_t lxr_size = ftell(file);
+        size_t file_size = ftell(file);
         fseek(file, 0L, SEEK_SET);
 
         if (gz_pos != NULL) {
-            lxr_size *= 2;
-            buf = malloc(lxr_size);
+            file_size *= 2;
+            buf = malloc(file_size);
             if (buf == NULL)
                 goto out;
             size_t pos = 0;
             while (1) {
-                if (fread(&zsize, sizeof(zsize), 1, file) != 1) {
-                    fprintf(stderr, "ERROR: Can't read compressed stream size");
+                uint32_t file_pos = (uint32_t)ftell(file);
+                if (fread(&zsize, sizeof(uint32_t), 1, file) != 1) {
+                    fprintf(stderr, "ERROR: Can't read compressed stream size at position %08x\n", file_pos);
                     goto out;
                 }
                 if (zsize == 0)
                     break;
-                uint8_t* zbuf = malloc(zsize);
+                zbuf = malloc(zsize);
                 if (zbuf == NULL)
                     goto out;
                 if (fread(zbuf, 1, zsize, file) != zsize) {
-                    fprintf(stderr, "ERROR: Can't read compressed stream");
-                    free(zbuf);
+                    fprintf(stderr, "ERROR: Can't read compressed stream at position %08x\n", file_pos);
                     goto out;
                 }
-                // Elixirs are deflated using a constant chunk size which simplifies overflow handling
-                if (pos + DEFAULT_CHUNK_SIZE > lxr_size) {
-                    lxr_size *= 2;
+                // Elixirs are inflated using a constant chunk size which simplifies overflow handling
+                if (pos + DEFAULT_CHUNK_SIZE > file_size) {
+                    file_size *= 2;
                     uint8_t* old_buf = buf;
-                    buf = realloc(buf, lxr_size);
+                    buf = realloc(buf, file_size);
                     if (buf == NULL) {
                         fprintf(stderr, "ERROR: Can't increase buffer size\n");
                         buf = old_buf;
                         goto out;
                     }
                 }
-                size_t s = tinfl_decompress_mem_to_mem(&buf[pos], lxr_size - pos, zbuf, zsize,
+                size_t s = tinfl_decompress_mem_to_mem(&buf[pos], file_size - pos, zbuf, zsize,
                     TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32);
-                if (s == 0) {
-                    fprintf(stderr, "ERROR: Can't decompress stream");
+                if ((s == 0) || (s == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED)) {
+                    fprintf(stderr, "ERROR: Can't decompress stream at position %08x\n", file_pos);
                     goto out;
                 }
                 pos += s;
             } while (zsize != 0);
-            lxr_size = pos;
+            file_size = pos;
 
 //#define DECOMPRESS_ONLY
 #ifdef DECOMPRESS_ONLY
@@ -234,21 +291,21 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
                 goto out;
             }
-            if (fwrite(buf, 1, lxr_size, dst) != lxr_size) {
+            if (fwrite(buf, 1, file_size, dst) != file_size) {
                 fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[1]);
                 fclose(dst);
                 goto out;
             }
-            printf("%08x %s\n", (uint32_t)lxr_size, argv[1]);
+            printf("%08x %s\n", (uint32_t)file_size, argv[1]);
             fclose(dst);
             r = 0;
             goto out;
 #endif
         } else {
-            buf = malloc(lxr_size);
+            buf = malloc(file_size);
             if (buf == NULL)
                 goto out;
-            if (fread(buf, 1, lxr_size, file) != lxr_size) {
+            if (fread(buf, 1, file_size, file) != file_size) {
                 fprintf(stderr, "ERROR: Can't read uncompressed data");
                 goto out;
             }
@@ -279,7 +336,7 @@ int main(int argc, char** argv)
         json_object_set_number(json_object(json), "header_size", hdr->header_size);
         json_object_set_number(json_object(json), "table_size", hdr->table_size);
 
-        if (sizeof(lxr_header) + hdr->nb_files * sizeof(lxr_entry) + hdr->payload_size != lxr_size) {
+        if (sizeof(lxr_header) + hdr->nb_files * sizeof(lxr_entry) + hdr->payload_size != file_size) {
             fprintf(stderr, "ERROR: File size mismatch\n");
             goto out;
         }
@@ -289,7 +346,7 @@ int main(int argc, char** argv)
         printf("OFFSET   SIZE     NAME\n");
         for (uint32_t i = 0; i < hdr->nb_files; i++) {
             lxr_entry* entry = (lxr_entry*)&buf[sizeof(lxr_header) + i * sizeof(lxr_entry)];
-            assert(entry->offset + entry->size <= (uint32_t)lxr_size);
+            assert(entry->offset + entry->size <= (uint32_t)file_size);
             // Ignore "dummy" entries
             if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
                 continue;
@@ -310,8 +367,12 @@ int main(int argc, char** argv)
 out:
     json_value_free(json);
     free(buf);
+    free(zbuf);
+    free(compressor);
     if (file != NULL)
         fclose(file);
+    if (dst != NULL)
+        fclose(dst);
 
     if (r != 0) {
         fflush(stdin);

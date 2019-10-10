@@ -20,12 +20,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\gust_elixir.c" />
+    <ClCompile Include="..\miniz_tdef.c" />
     <ClCompile Include="..\miniz_tinfl.c" />
     <ClCompile Include="..\parson.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\miniz_common.h" />
+    <ClInclude Include="..\miniz_tdef.h" />
     <ClInclude Include="..\miniz_tinfl.h" />
     <ClInclude Include="..\parson.h" />
     <ClInclude Include="..\util.h" />
