@@ -121,7 +121,6 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
             goto out;
         }
-        g1t_header hdr = { 0 };
         const char* filename = json_object_get_string(json_object(json), "name");
         const char* version = json_object_get_string(json_object(json), "version");
         if ((filename == NULL) || (version == NULL))
@@ -133,6 +132,7 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
             goto out;
         }
+        g1t_header hdr = { 0 };
         hdr.magic = G1TG_MAGIC;
         memcpy(hdr.version, version, strlen(version));
         hdr.total_size = 0;  // To be rewritten when we're done
@@ -150,7 +150,7 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: number of extra flags doesn't match number of textures\n");
             goto out;
         }
-        for (size_t i = 0; i < hdr.nb_textures; i++) {
+        for (uint32_t i = 0; i < hdr.nb_textures; i++) {
             uint32_t extra_flag = (uint32_t)json_array_get_number(extra_flags_array, i);
             if (fwrite(&extra_flag, sizeof(uint32_t), 1, file) != 1) {
                 fprintf(stderr, "ERROR: Can't write extra flags\n");
@@ -175,7 +175,7 @@ int main(int argc, char** argv)
         for (size_t i = 0; i < strlen(argv[1]); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
-        for (size_t i = 0; i < hdr.nb_textures; i++) {
+        for (uint32_t i = 0; i < hdr.nb_textures; i++) {
             offset_table[i] = ftell(file) - hdr.header_size;
             JSON_Object* texture_entry = json_array_get_object(textures_array, i);
             g1t_tex_header tex = { 0 };
@@ -183,7 +183,6 @@ int main(int argc, char** argv)
             tex.flags = json_object_get_uint32(texture_entry, "flags");
             // Read the DDS file
             snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, json_object_get_string(texture_entry, "name"));
-            buf = NULL;
             uint32_t dds_size = read_file(path, &buf);
             if (dds_size < sizeof(DDS_HEADER) + 16)
                 goto out;

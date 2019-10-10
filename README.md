@@ -12,7 +12,7 @@ Utilities
 =========
 
 * `gust_pak`: Unpack a Gust `.pak` archive.
-* `gust_elixir`: Unpack a Gust `.elixir[.gz]` archive.
+* `gust_elixir`: Unpack or repack a Gust `.elixir[.gz]` archive.
 * `gust_g1t`: Unpack or repack a Gust `.g1t` texture archive.
 * `gust_enc`: Encode or decode a Gust `.e` archive.
 
