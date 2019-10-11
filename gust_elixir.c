@@ -380,5 +380,8 @@ out:
         (void)getchar();
     }
 
+#ifdef _CRTDBG_MAP_ALLOC
+    _CrtDumpMemoryLeaks();
+#endif
     return r;
 }

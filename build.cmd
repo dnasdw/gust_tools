@@ -11,7 +11,7 @@ rem set LINK=%LINK% /DEBUG
 
 echo.
 set APP_NAME=gust_pak
-cl.exe %APP_NAME%.c util.c /Fe%APP_NAME%.exe
+cl.exe %APP_NAME%.c util.c parson.c /Fe%APP_NAME%.exe
 if %ERRORLEVEL% neq 0 goto out
 echo =^> %APP_NAME%.exe
 

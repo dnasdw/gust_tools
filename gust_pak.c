@@ -24,13 +24,14 @@
 #include <stdlib.h>
 
 #include "util.h"
+#include "parson.h"
 
 #pragma pack(push, 1)
 typedef struct {
-    uint32_t unknown1;
+    uint32_t version;
     uint32_t nb_entries;
-    uint32_t unknown2;
-    uint32_t unknown3;
+    uint32_t size;
+    uint32_t flags;
 } pak_header;
 
 typedef struct {
@@ -50,9 +51,6 @@ typedef struct {
 } pak_entry64;
 #pragma pack(pop)
 
-static pak_header header;
-static pak_entry64* entries64 = NULL;
-
 static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
 {
     for (uint32_t i = 0; i < length; i++)
@@ -67,6 +65,10 @@ int main(int argc, char** argv)
     int r = -1;
     FILE* src = NULL;
     uint8_t* buf = NULL;
+    char path[256];
+    pak_header header;
+    pak_entry64* entries64 = NULL;
+    JSON_Value* json = NULL;
 
     if (argc != 2) {
         printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\n"
@@ -77,7 +79,10 @@ int main(int argc, char** argv)
     }
 
     if (is_directory(argv[1])) {
-        fprintf(stderr, "ERROR: Directory packing is not implemented\n");
+        fprintf(stderr, "ERROR: Directory packing is not supported.\n"
+            "To recreate a .pak you need to use the corresponding .json file.\n");
+    } else if (strstr(argv[1], ".json") != NULL) {
+        fprintf(stderr, "ERROR: Repacking from .json is not supported yet.\n");
     } else {
         printf("Extracting '%s'...\n", argv[1]);
         src = fopen(argv[1], "rb");
@@ -91,13 +96,13 @@ int main(int argc, char** argv)
             goto out;
         }
 
-        if ((header.unknown1 != 0x20000) || (header.unknown2 != 0x10) || (header.unknown3 != 0x0D)) {
+        if ((header.version != 0x20000) || (header.size != sizeof(pak_header)) || (header.flags != 0x0D)) {
             fprintf(stderr, "WARNING: Signature doesn't match expected PAK file format.\n");
         }
-
         if (header.nb_entries > 16384) {
             fprintf(stderr, "WARNING: More than 16384 entries, is this a supported archive?\n");
         }
+
         entries64 = calloc(header.nb_entries, sizeof(pak_entry64));
         if (entries64 == NULL) {
             fprintf(stderr, "ERROR: Can't allocate entries\n");
@@ -106,7 +111,6 @@ int main(int argc, char** argv)
 
         if (fread(entries64, sizeof(pak_entry64), header.nb_entries, src) != header.nb_entries) {
             fprintf(stderr, "ERROR: Can't read PAK header\n");
-            free(entries64);
             goto out;
         }
 
@@ -128,9 +132,17 @@ int main(int argc, char** argv)
         bool is_pak32 = (sum[0] < sum[1]);
         printf("Detected %s PAK format\n\n", is_pak32 ? "A17/32-bit" : "A18/64-bit");
 
-        char path[256];
+        // Store the data we'll need to reconstruct the archibe to a JSON file
+        json = json_value_init_object();
+        json_object_set_string(json_object(json), "name", argv[1]);
+        json_object_set_number(json_object(json), "version", header.version);
+        json_object_set_number(json_object(json), "flags", header.flags);
+        json_object_set_number(json_object(json), "nb_entries", header.nb_entries);
+        json_object_set_boolean(json_object(json), "64-bit", !is_pak32);
+
         bool skip_decode;
         int64_t file_data_offset = sizeof(pak_header) + (int64_t)header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
+        JSON_Value* json_files_array = json_value_init_array();
         printf("OFFSET    SIZE     NAME\n");
         for (uint32_t i = 0; i < header.nb_entries; i++) {
             int j;
@@ -144,6 +156,10 @@ int main(int argc, char** argv)
             }
             printf("%09" PRIx64 " %08x %s%c\n", entry(i, data_offset) + file_data_offset,
                 entry(i, length), entry(i, filename), skip_decode ? '*' : ' ');
+            JSON_Value* json_file = json_value_init_object();
+            json_object_set_string(json_object(json_file), "name", entry(i, filename));
+            json_object_set_boolean(json_object(json_file), "skip_decode", skip_decode);
+            json_array_append_value(json_array(json_files_array), json_file);
             strcpy(path, &entry(i, filename)[1]);
             for (size_t n = strlen(path); n > 0; n--) {
                 if (path[n] == PATH_SEP) {
@@ -155,40 +171,37 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: Can't create path '%s'\n", path);
                 goto out;
             }
-            FILE* dst = NULL;
-            dst = fopen(&entry(i, filename)[1], "wb");
-            if (dst == NULL) {
-                fprintf(stderr, "ERROR: Can't create file '%s'\n", &entry(i, filename)[1]);
-                goto out;
-            }
             fseek64(src, entry(i, data_offset) + file_data_offset, SEEK_SET);
             buf = malloc(entry(i, length));
             if (buf == NULL) {
                 fprintf(stderr, "ERROR: Can't allocate entries\n");
-                fclose(dst);
                 goto out;
             }
             if (fread(buf, 1, entry(i, length), src) != entry(i, length)) {
                 fprintf(stderr, "ERROR: Can't read archive\n");
-                fclose(dst);
                 goto out;
             }
             if (!skip_decode)
                 decode(buf, entry(i, key), entry(i, length));
-
-            if (fwrite(buf, 1, entry(i, length), dst) != entry(i, length)) {
-                fprintf(stderr, "ERROR: Can't write file '%s'\n", &entry(i, filename)[1]);
-                fclose(dst);
+            if (!write_file(buf, entry(i, length), &entry(i, filename)[1], false))
                 goto out;
-            }
             free(buf);
             buf = NULL;
-            fclose(dst);
         }
+
+        json_object_set_value(json_object(json), "files", json_files_array);
+        size_t i, len = strlen(argv[1]);
+        for (i = len - 1; (argv[1][i] != '.') && (i > 0); i--);
+        if (i != 0)
+            argv[1][i] = 0;
+        strncpy(path, argv[1], sizeof(path) - 1);
+        snprintf(path, sizeof(path), "%s.json", argv[1]);
+        json_serialize_to_file_pretty(json, path);
         r = 0;
     }
 
 out:
+    json_value_free(json);
     free(buf);
     free(entries64);
     if (src != NULL)
@@ -200,5 +213,8 @@ out:
         (void)getchar();
     }
 
+#ifdef _CRTDBG_MAP_ALLOC
+    _CrtDumpMemoryLeaks();
+#endif
     return r;
 }

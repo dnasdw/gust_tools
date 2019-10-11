@@ -5,7 +5,7 @@ else
 endif
 
 BIN1=gust_pak
-SRC1=${BIN1}.c util.c
+SRC1=${BIN1}.c util.c parson.c
 OBJ1=${SRC1:.c=.o}
 DEP1=${SRC1:.c=.d}
 
