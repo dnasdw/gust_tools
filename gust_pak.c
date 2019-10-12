@@ -94,22 +94,27 @@ int main(int argc, char** argv)
     pak_entry64* entries64 = NULL;
     JSON_Value* json = NULL;
     bool is_pak64 = false;
+    bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
-    if (argc != 2) {
+    if ((argc != 2) && !list_only) {
         printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\n"
-            "Usage: %s <Gust PAK file>\n\n"
-            "Extract all the files from a Gust .pak archive.\n",
+            "Usage: %s [-l] <Gust PAK file>\n\n"
+            "Extracts (.pak) or recreates (.json) a Gust .pak archive.\n\n",
             appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 
-    if (is_directory(argv[1])) {
+    if (is_directory(argv[argc - 1])) {
         fprintf(stderr, "ERROR: Directory packing is not supported.\n"
             "To recreate a .pak you need to use the corresponding .json file.\n");
-    } else if (strstr(argv[1], ".json") != NULL) {
-        json = json_parse_file_with_comments(argv[1]);
+    } else if (strstr(argv[argc - 1], ".json") != NULL) {
+        if (list_only) {
+            fprintf(stderr, "ERROR: Option -l is not supported when creating an archive\n");
+            goto out;
+        }
+        json = json_parse_file_with_comments(argv[argc - 1]);
         if (json == NULL) {
-            fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", argv[1]);
+            fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", argv[argc - 1]);
             goto out;
         }
         const char* filename = json_object_get_string(json_object(json), "name");
@@ -197,10 +202,10 @@ int main(int argc, char** argv)
         }
         r = 0;
     } else {
-        printf("Extracting '%s'...\n", argv[1]);
-        file = fopen(argv[1], "rb");
+        printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
+        file = fopen(argv[argc - 1], "rb");
         if (file == NULL) {
-            fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[1]);
+            fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[argc - 1]);
             goto out;
         }
 
@@ -249,7 +254,7 @@ int main(int argc, char** argv)
 
         // Store the data we'll need to reconstruct the archibe to a JSON file
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", change_extension(argv[1], ".pak"));
+        json_object_set_string(json_object(json), "name", change_extension(argv[argc - 1], ".pak"));
         json_object_set_number(json_object(json), "version", hdr.version);
         json_object_set_number(json_object(json), "header_size", hdr.header_size);
         json_object_set_number(json_object(json), "flags", hdr.flags);
@@ -272,6 +277,8 @@ int main(int argc, char** argv)
             }
             printf("%09" PRIx64 " %08x %s%c\n", entry(i, data_offset) + file_data_offset,
                 entry(i, size), entry(i, filename), skip_decode ? '*' : ' ');
+            if (list_only)
+                continue;
             JSON_Value* json_file = json_value_init_object();
             json_object_set_string(json_object(json_file), "name", entry(i, filename));
             json_object_set_string(json_object(json_file), "key", key_to_string(entry(i, key)));
@@ -308,8 +315,10 @@ int main(int argc, char** argv)
             buf = NULL;
         }
 
-        json_object_set_value(json_object(json), "files", json_files_array);
-        json_serialize_to_file_pretty(json, change_extension(argv[1], ".json"));
+        if (!list_only) {
+            json_object_set_value(json_object(json), "files", json_files_array);
+            json_serialize_to_file_pretty(json, change_extension(argv[argc - 1], ".json"));
+        }
         r = 0;
     }
 

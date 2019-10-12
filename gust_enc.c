@@ -623,7 +623,7 @@ int main(int argc, char** argv)
         printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
             "Encode or decode a Gust .e file.\n\n"
             "If GAME_ID is not provided, then the default game ID from '%s.json' is used.\n"
-            "This application will also create a backup (.bak) of the original, when the target\n"
+            "Note: A backup (.bak) of the original is automatically created, when the target\n"
             "is being overwritten for the first time.\n",
             app_name, GUST_TOOLS_VERSION_STR, app_name, app_name);
         return 0;

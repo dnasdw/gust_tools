@@ -6,8 +6,6 @@ set CL=/nologo /errorReport:none /Gm- /GF /GS- /MP /MT /W4 /WX /wd4204 /wd4214 /
 set LINK=/errorReport:none /INCREMENTAL:NO
 
 set CL=%CL% /Ox
-rem set CL=%CL% /Od /Zi
-rem set LINK=%LINK% /DEBUG
 
 echo.
 set APP_NAME=gust_pak

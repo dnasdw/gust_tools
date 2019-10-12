@@ -67,19 +67,24 @@ int main(int argc, char** argv)
     FILE *file = NULL, *dst = NULL;
     JSON_Value* json = NULL;
     tdefl_compressor* compressor = NULL;
+    bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
-    if (argc != 2) {
+    if ((argc != 2) && !list_only) {
         printf("%s %s (c) 2019 VitaSmith\n\n"
-            "Usage: %s <elixir[.gz]> file>\n\n"
+            "Usage: %s [-l] <elixir[.gz]> file>\n\n"
             "Extracts (file) or recreates (directory) a Gust .elixir archive.\n\n"
-            "This application will also create a backup (.bak) of the original, when the target\n"
+            "Note: A backup (.bak) of the original is automatically created, when the target\n"
             "is being overwritten for the first time.\n",
             appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 
-    if (is_directory(argv[1])) {
-        snprintf(path, sizeof(path), "%s%celixir.json", argv[1], PATH_SEP);
+    if (is_directory(argv[argc - 1])) {
+        if (list_only) {
+            fprintf(stderr, "ERROR: Option -l is not supported when creating an archive\n");
+            goto out;
+        }
+        snprintf(path, sizeof(path), "%s%celixir.json", argv[argc - 1], PATH_SEP);
         if (!is_file(path)) {
             fprintf(stderr, "ERROR: '%s' does not exist\n", path);
             goto out;
@@ -136,7 +141,8 @@ int main(int argc, char** argv)
         printf("OFFSET   SIZE     NAME\n");
         for (uint32_t i = 0; i < hdr.nb_files; i++) {
             table[i].offset = ftell(file);
-            snprintf(path, sizeof(path), "%s%c%s", basename(argv[1]), PATH_SEP, json_array_get_string(json_files_array, i));
+            snprintf(path, sizeof(path), "%s%c%s", basename(argv[argc - 1]), PATH_SEP,
+                json_array_get_string(json_files_array, i));
             table[i].size = read_file(path, &buf);
             if (table[i].size == 0) {
                 free(table);
@@ -218,23 +224,23 @@ int main(int argc, char** argv)
 
         r = 0;
     } else {
-        printf("Extracting '%s'...\n", basename(argv[1]));
-        char* elixir_pos = strstr(argv[1], ".elixir");
+        printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
+        char* elixir_pos = strstr(argv[argc - 1], ".elixir");
         if (elixir_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");
             goto out;
         }
-        char* gz_pos = strstr(argv[1], ".gz");
+        char* gz_pos = strstr(argv[argc - 1], ".gz");
 
-        file = fopen(argv[1], "rb");
+        file = fopen(argv[argc - 1], "rb");
         if (file == NULL) {
-            fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[1]);
+            fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[argc - 1]);
             goto out;
         }
 
         // Some elixir.gz files are actually uncompressed versions
         if (fread(&zsize, sizeof(zsize), 1, file) != 1) {
-            fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[1]);
+            fprintf(stderr, "ERROR: Can't read from elixir file '%s'", argv[argc - 1]);
             goto out;
         }
         if ((zsize == EARC_MAGIC) && (gz_pos != NULL))
@@ -288,22 +294,24 @@ int main(int argc, char** argv)
 
 //#define DECOMPRESS_ONLY
 #ifdef DECOMPRESS_ONLY
-            FILE* dst = NULL;
-            *gz_pos = 0;
-            dst = fopen(argv[1], "wb");
-            if (dst == NULL) {
-                fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[1]);
-                goto out;
-            }
-            if (fwrite(buf, 1, file_size, dst) != file_size) {
-                fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[1]);
+            if (!list_only) {
+                FILE* dst = NULL;
+                *gz_pos = 0;
+                dst = fopen(argv[argc - 1], "wb");
+                if (dst == NULL) {
+                    fprintf(stderr, "ERROR: Can't create file '%s'\n", argv[argc - 1]);
+                    goto out;
+                }
+                if (fwrite(buf, 1, file_size, dst) != file_size) {
+                    fprintf(stderr, "ERROR: Can't write file '%s'\n", argv[argc - 1]);
+                    fclose(dst);
+                    goto out;
+                }
+                printf("%08x %s\n", (uint32_t)file_size, basename(argv[argc - 1]));
                 fclose(dst);
+                r = 0;
                 goto out;
             }
-            printf("%08x %s\n", (uint32_t)file_size, argv[1]);
-            fclose(dst);
-            r = 0;
-            goto out;
 #endif
         } else {
             buf = malloc(file_size);
@@ -317,11 +325,11 @@ int main(int argc, char** argv)
 
         // Now that we have an uncompressed .elixir file, extract the files
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", basename(argv[1]));
+        json_object_set_string(json_object(json), "name", basename(argv[argc - 1]));
         json_object_set_boolean(json_object(json), "compressed", (gz_pos != NULL));
 
         *elixir_pos = 0;
-        if (!create_path(argv[1]))
+        if (!list_only && !create_path(argv[argc - 1]))
             goto out;
 
         lxr_header* hdr = (lxr_header*)buf;
@@ -355,15 +363,18 @@ int main(int argc, char** argv)
             if ((entry->size == 0) && (strcmp(entry->filename, "dummy") == 0))
                 continue;
             json_array_append_string(json_array(json_files_array), entry->filename);
-            snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, entry->filename);
+            snprintf(path, sizeof(path), "%s%c%s", argv[argc - 1], PATH_SEP, entry->filename);
+            printf("%08x %08x %s\n", entry->offset, entry->size, path);
+            if (list_only)
+                continue;
             if (!write_file(&buf[entry->offset], entry->size, path, false))
                 goto out;
-            printf("%08x %08x %s\n", entry->offset, entry->size, path);
         }
 
         json_object_set_value(json_object(json), "files", json_files_array);
-        snprintf(path, sizeof(path), "%s%celixir.json", argv[1], PATH_SEP);
-        json_serialize_to_file_pretty(json, path);
+        snprintf(path, sizeof(path), "%s%celixir.json", argv[argc - 1], PATH_SEP);
+        if (!list_only)
+            json_serialize_to_file_pretty(json, path);
 
         r = 0;
     }

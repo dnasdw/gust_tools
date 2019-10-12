@@ -99,19 +99,24 @@ int main(int argc, char** argv)
     uint32_t magic;
     char path[256];
     JSON_Value* json = NULL;
+    bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
-    if (argc != 2) {
+    if ((argc != 2) && !list_only) {
         printf("%s %s (c) 2019 VitaSmith\n\n"
-            "Usage: %s <file or directory>\n\n"
+            "Usage: %s [-l] <file or directory>\n\n"
             "Extracts (file) or recreates (directory) a Gust .g1t texture archive.\n\n"
-            "This application will also create a backup (.bak) of the original, when the target\n"
+            "Note: A backup (.bak) of the original is automatically created, when the target\n"
             "is being overwritten for the first time.\n",
             appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 
-    if (is_directory(argv[1])) {
-        snprintf(path, sizeof(path), "%s%cg1t.json", argv[1], PATH_SEP);
+    if (is_directory(argv[argc - 1])) {
+        if (list_only) {
+            fprintf(stderr, "ERROR: Option -l is not supported when creating an archive\n");
+            goto out;
+        }
+        snprintf(path, sizeof(path), "%s%cg1t.json", argv[argc - 1], PATH_SEP);
         if (!is_file(path)) {
             fprintf(stderr, "ERROR: '%s' does not exist\n", path);
             goto out;
@@ -172,7 +177,7 @@ int main(int argc, char** argv)
         }
 
         printf("OFFSET   SIZE     NAME");
-        for (size_t i = 0; i < strlen(basename(argv[1])); i++)
+        for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
         for (uint32_t i = 0; i < hdr.nb_textures; i++) {
@@ -182,7 +187,8 @@ int main(int argc, char** argv)
             tex.type = (uint8_t)json_object_get_number(texture_entry, "type");
             tex.flags = json_object_get_uint32(texture_entry, "flags");
             // Read the DDS file
-            snprintf(path, sizeof(path), "%s%c%s", basename(argv[1]), PATH_SEP, json_object_get_string(texture_entry, "name"));
+            snprintf(path, sizeof(path), "%s%c%s", basename(argv[argc - 1]), PATH_SEP,
+                json_object_get_string(texture_entry, "name"));
             uint32_t dds_size = read_file(path, &buf);
             if (dds_size < sizeof(DDS_HEADER) + 16)
                 goto out;
@@ -243,21 +249,21 @@ int main(int argc, char** argv)
         }
         r = 0;
     } else {
-        printf("Extracting '%s'...\n", basename(argv[1]));
-        char* g1t_pos = strstr(argv[1], ".g1t");
+        printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
+        char* g1t_pos = strstr(argv[argc - 1], ".g1t");
         if (g1t_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
             goto out;
         }
 
-        file = fopen(argv[1], "rb");
+        file = fopen(argv[argc - 1], "rb");
         if (file == NULL) {
-            fprintf(stderr, "ERROR: Can't open file '%s'", argv[1]);
+            fprintf(stderr, "ERROR: Can't open file '%s'", argv[argc - 1]);
             goto out;
         }
 
         if (fread(&magic, sizeof(magic), 1, file) != 1) {
-            fprintf(stderr, "ERROR: Can't read from '%s'", argv[1]);
+            fprintf(stderr, "ERROR: Can't read from '%s'", argv[argc - 1]);
             goto out;
         }
         if (magic != G1TG_MAGIC) {
@@ -297,7 +303,7 @@ int main(int argc, char** argv)
 
         // Keep the information required to recreate the archive in a JSON file
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", basename(argv[1]));
+        json_object_set_string(json_object(json), "name", basename(argv[argc - 1]));
         char version[5];
         for (int i = 0; i < 4; i++)
             version[i] = hdr->version[i];
@@ -308,14 +314,14 @@ int main(int argc, char** argv)
         json_object_set_number(json_object(json), "extra_size", hdr->extra_size);
 
         g1t_pos[0] = 0;
-        if (!create_path(argv[1]))
+        if (!list_only && !create_path(argv[argc - 1]))
             goto out;
 
         JSON_Value* json_flags_array = json_value_init_array();
         JSON_Value* json_textures_array = json_value_init_array();
 
         printf("OFFSET   SIZE     NAME");
-        for (size_t i = 0; i < strlen(basename(argv[1])); i++)
+        for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
@@ -345,12 +351,14 @@ int main(int argc, char** argv)
             uint32_t texture_size = highest_mipmap_size;
             for (int j = 0; j < tex->mipmaps - 1; j++)
                 texture_size += highest_mipmap_size / (4 << (j * 2));
-            snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[1]), PATH_SEP, i);
+            snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[argc - 1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
             printf("%08x %08x %s %-10s %d\n", hdr->header_size + offset_table[i],
                 ((i + 1 == hdr->nb_textures) ? g1t_size : offset_table[i + 1]) - offset_table[i],
                 path, dims, tex->mipmaps);
+            if (list_only)
+                continue;
             FILE* dst = fopen(path, "wb");
             if (dst == NULL) {
                 fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
@@ -393,8 +401,9 @@ int main(int argc, char** argv)
 
         json_object_set_value(json_object(json), "extra_flags", json_flags_array);
         json_object_set_value(json_object(json), "textures", json_textures_array);
-        snprintf(path, sizeof(path), "%s%cg1t.json", argv[1], PATH_SEP);
-        json_serialize_to_file_pretty(json, path);
+        snprintf(path, sizeof(path), "%s%cg1t.json", argv[argc - 1], PATH_SEP);
+        if (!list_only)
+            json_serialize_to_file_pretty(json, path);
 
         r = 0;
     }
