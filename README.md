@@ -5,13 +5,12 @@
 
 A set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
 [_Atelier series_](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
-[_Blue Reflection_](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/),
-[_Toukiden series_](https://store.steampowered.com/search/?term=toukiden&category1=998), ...
+[_Blue Reflection_](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/), ...
 
 Utilities
 =========
 
-* `gust_pak`: Unpack a Gust `.pak` archive.
+* `gust_pak`: Unpack or repack a Gust `.pak` archive.
 * `gust_elixir`: Unpack or repack a Gust `.elixir[.gz]` archive.
 * `gust_g1t`: Unpack or repack a Gust `.g1t` texture archive.
 * `gust_enc`: Encode or decode a Gust `.e` archive.
@@ -19,10 +18,14 @@ Utilities
 Notes
 -----
 
-`gust_pak` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it detects "A17" (32-bit) and "A18" (64-bit) formats
-automatically. It should therefore works with all of the Atelier PC ports (including _Atelier Sophie_) as well as _Blue Reflection_'s archives.
+`gust_pak` is designed to replace both `A17_Decrypt` and `A18_Decrypt`, as it automatically detects "A17" (32-bit) and "A18" (64-bit) formats.
+It should therefore works with all of the Atelier PC ports (including _Atelier Sophie_) as well as _Blue Reflection_ archives.
 
 `gust_enc` only works on the games where for which the scrambling seeds are known. See `gust_enc.json` for details.
+
+In most cases, the repacking of an archive relies on a corresponding `.json` to have been created during unpacking.
+You will not be able to recreate an archive if a `.json` file does not exist for it, either in the directory (`.elixir`, `.g1t`)
+or at the root level (`.pak`).
 
 Building
 ========
@@ -34,9 +37,14 @@ Otherwise (Linux, MinGW) just issue `make`.
 Usage
 =====
 
-On Windows, just drop the archive you want to unpack on top of the executable, and it will be extracted in the current directory.
+On Windows, you can just drop the file or directory you want to unpack/repack or decode/encode on top of the executable.
 
-Otherwise, just invoke `<gust_utility> <gust_archive`.
+Otherwise, you can invoke: `<gust_utility> <file or directory>`.
+
+When invoking `gust_enc`, you may specify the game ID to use for the encryption seeds (e.g. `-BR` for _Blue Reflection_,
+`-A17` for _Atelier Sophie_). If not specified, then the default ID from `gust_enc.json` is be used.
+
+For recreating a `.pak`, you must pass the `.json` that was created during extraction to `gust_pak` rather than the directory.
 
 Modding games
 =============

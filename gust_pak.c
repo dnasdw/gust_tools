@@ -29,46 +29,71 @@
 #pragma pack(push, 1)
 typedef struct {
     uint32_t version;
-    uint32_t nb_entries;
-    uint32_t size;
+    uint32_t nb_files;
+    uint32_t header_size;
     uint32_t flags;
 } pak_header;
 
 typedef struct {
     char     filename[128];
-    uint32_t length;
+    uint32_t size;
     uint8_t  key[20];
     uint32_t data_offset;
-    uint32_t dummy;
+    uint32_t flags;
 } pak_entry32;
 
 typedef struct {
     char     filename[128];
-    uint32_t length;
+    uint32_t size;
     uint8_t  key[20];
     uint64_t data_offset;
-    uint64_t dummy;
+    uint64_t flags;
 } pak_entry64;
 #pragma pack(pop)
 
-static __inline void decode(uint8_t* a, uint8_t* k, uint32_t length)
+static __inline void decode(uint8_t* a, uint8_t* k, uint32_t size)
 {
-    for (uint32_t i = 0; i < length; i++)
+    for (uint32_t i = 0; i < size; i++)
         a[i] ^= k[i % 20];
 }
 
-// To handle either 32 and 64 bit PAK entries
-#define entry(i, m) (is_pak32 ? (((pak_entry32*)entries64)[i]).m : entries64[i].m)
+static char* key_to_string(uint8_t* key)
+{
+    static char key_string[41];
+    for (size_t i = 0; i < 20; i++) {
+        key_string[2 * i] = ((key[i] >> 4) < 10) ? '0' + (key[i] >> 4) : 'a' + (key[i] >> 4) - 10;
+        key_string[2 * i + 1] = ((key[i] & 0xf) < 10) ? '0' + (key[i] & 0xf) : 'a' + (key[i] & 0xf) - 10;
+    }
+    key_string[40] = 0;
+    return key_string;
+}
+
+static uint8_t* string_to_key(const char* str)
+{
+    static uint8_t key[20];
+    for (size_t i = 0; i < 20; i++) {
+        key[i] = (str[2 * i] >= 'a') ? str[2 * i] - 'a' + 10 : str[2 * i] - '0';
+        key[i] <<= 4;
+        key[i] += (str[2 * i + 1] >= 'a') ? str[2 * i + 1] - 'a' + 10 : str[2 * i + 1] - '0';
+    }
+    return key;
+}
+
+// To handle either 32 or 64 bit PAK entries
+#define entries32 ((pak_entry32*)entries64)
+#define entry(i, m) (is_pak64 ? entries64[i].m :(entries32[i]).m)
+#define set_entry(i, m, v) do {if (is_pak64) entries64[i].m = v; else (entries32[i]).m = (uint32_t)(v);} while(0)
 
 int main(int argc, char** argv)
 {
     int r = -1;
-    FILE* src = NULL;
+    FILE* file = NULL;
     uint8_t* buf = NULL;
     char path[256];
-    pak_header header;
+    pak_header hdr = { 0 };
     pak_entry64* entries64 = NULL;
     JSON_Value* json = NULL;
+    bool is_pak64 = false;
 
     if (argc != 2) {
         printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\n"
@@ -82,35 +107,125 @@ int main(int argc, char** argv)
         fprintf(stderr, "ERROR: Directory packing is not supported.\n"
             "To recreate a .pak you need to use the corresponding .json file.\n");
     } else if (strstr(argv[1], ".json") != NULL) {
-        fprintf(stderr, "ERROR: Repacking from .json is not supported yet.\n");
+        json = json_parse_file_with_comments(argv[1]);
+        if (json == NULL) {
+            fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", argv[1]);
+            goto out;
+        }
+        const char* filename = json_object_get_string(json_object(json), "name");
+        hdr.header_size = (uint32_t)json_object_get_number(json_object(json), "header_size");
+        if ((filename == NULL) || (hdr.header_size != sizeof(pak_header))) {
+            fprintf(stderr, "ERROR: No filename/wrong header size\n");
+            goto out;
+        }
+        hdr.version = (uint32_t)json_object_get_number(json_object(json), "version");
+        hdr.flags = (uint32_t)json_object_get_number(json_object(json), "flags");
+        hdr.nb_files = (uint32_t)json_object_get_number(json_object(json), "nb_files");
+        is_pak64 = json_object_get_boolean(json_object(json), "64-bit");
+        printf("Creating '%s'...\n", filename);
+        create_backup(filename);
+        file = fopen(filename, "wb+");
+        if (file == NULL) {
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
+            goto out;
+        }
+        if (fwrite(&hdr, sizeof(pak_header), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't write PAK header\n");
+            goto out;
+        }
+        entries64 = calloc(hdr.nb_files, sizeof(pak_entry64));
+        if (entries64 == NULL) {
+            fprintf(stderr, "ERROR: Can't allocate entries\n");
+            goto out;
+        }
+        // Write a dummy table for now
+        if (fwrite(entries64, is_pak64 ? sizeof(pak_entry64) : sizeof(pak_entry32),
+            hdr.nb_files, file) != hdr.nb_files) {
+            fprintf(stderr, "ERROR: Can't write initial PAK table\n");
+            goto out;
+        }
+        uint64_t file_data_offset = ftell64(file);
+
+        JSON_Array* json_files_array = json_object_get_array(json_object(json), "files");
+        printf("OFFSET    SIZE     NAME\n");
+        for (uint32_t i = 0; i < hdr.nb_files; i++) {
+            JSON_Object* file_entry = json_array_get_object(json_files_array, i);
+            uint8_t* key = string_to_key(json_object_get_string(file_entry, "key"));
+            filename = json_object_get_string(file_entry, "name");
+            strncpy(entry(i, filename), filename, 127);
+            strncpy(path, filename, sizeof(path) - 1);
+            for (size_t n = 0; n < strlen(path); n++) {
+                if (path[n] == '\\')
+                    path[n] = PATH_SEP;
+            }
+            set_entry(i, size, read_file(&path[1], &buf));
+            if (entry(i, size) == 0) {
+                fprintf(stderr, "ERROR: Can't read from '%s'\n", path);
+                goto out;
+            }
+            bool skip_encode = true;
+            for (int j = 0; j < 20; j++) {
+                entry(i, key)[j] = key[j];
+                if (key[j] != 0)
+                    skip_encode = false;
+            }
+
+            set_entry(i, data_offset, ftell64(file) - file_data_offset);
+            uint64_t flags = (uint64_t)json_object_get_number(file_entry, "flags");
+            if (is_pak64)
+                setbe64(&(entries64[i].flags), flags);
+            else
+                setbe32(&(entries32[i].flags), (uint32_t)flags);
+            printf("%09" PRIx64 " %08x %s%c\n", entry(i, data_offset) + file_data_offset,
+                entry(i, size), entry(i, filename), skip_encode ? '*' : ' ');
+            if (!skip_encode) {
+                decode((uint8_t*)entry(i, filename), entry(i, key), 128);
+                decode(buf, entry(i, key), entry(i, size));
+            }
+            if (fwrite(buf, 1, entry(i, size), file) != entry(i, size)) {
+                fprintf(stderr, "ERROR: Can't write data for '%s'\n", path);
+                goto out;
+            }
+            free(buf);
+            buf = NULL;
+        }
+        fseek64(file, sizeof(pak_header), SEEK_SET);
+        if (fwrite(entries64, is_pak64 ? sizeof(pak_entry64) : sizeof(pak_entry32),
+            hdr.nb_files, file) != hdr.nb_files) {
+            fprintf(stderr, "ERROR: Can't write PAK table\n");
+            goto out;
+        }
+        r = 0;
     } else {
         printf("Extracting '%s'...\n", argv[1]);
-        src = fopen(argv[1], "rb");
-        if (src == NULL) {
+        file = fopen(argv[1], "rb");
+        if (file == NULL) {
             fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[1]);
             goto out;
         }
 
-        if (fread(&header, sizeof(header), 1, src) != 1) {
-            fprintf(stderr, "ERROR: Can't read header");
+        if (fread(&hdr, sizeof(hdr), 1, file) != 1) {
+            fprintf(stderr, "ERROR: Can't read hdr");
             goto out;
         }
 
-        if ((header.version != 0x20000) || (header.size != sizeof(pak_header)) || (header.flags != 0x0D)) {
-            fprintf(stderr, "WARNING: Signature doesn't match expected PAK file format.\n");
+        if ((hdr.version != 0x20000) || (hdr.header_size != sizeof(pak_header))) {
+            fprintf(stderr, "ERROR: Signature doesn't match expected PAK file format.\n");
+            goto out;
         }
-        if (header.nb_entries > 16384) {
-            fprintf(stderr, "WARNING: More than 16384 entries, is this a supported archive?\n");
+        if (hdr.nb_files > 16384) {
+            fprintf(stderr, "ERROR: Too many entries.\n");
+            goto out;
         }
 
-        entries64 = calloc(header.nb_entries, sizeof(pak_entry64));
+        entries64 = calloc(hdr.nb_files, sizeof(pak_entry64));
         if (entries64 == NULL) {
             fprintf(stderr, "ERROR: Can't allocate entries\n");
             goto out;
         }
 
-        if (fread(entries64, sizeof(pak_entry64), header.nb_entries, src) != header.nb_entries) {
-            fprintf(stderr, "ERROR: Can't read PAK header\n");
+        if (fread(entries64, sizeof(pak_entry64), hdr.nb_files, file) != hdr.nb_files) {
+            fprintf(stderr, "ERROR: Can't read PAK hdr\n");
             goto out;
         }
 
@@ -121,7 +236,7 @@ int main(int argc, char** argv)
         // 32 or 64-bit PAK archive.
         uint64_t sum[2] = { 0, 0 };
         uint32_t val[2], last[2] = { 0, 0 };
-        for (uint32_t i = 0; i < min(header.nb_entries, 64); i++) {
+        for (uint32_t i = 0; i < min(hdr.nb_files, 64); i++) {
             val[0] = ((pak_entry32*)entries64)[i].data_offset;
             val[1] = (uint32_t)(entries64[i].data_offset >> 32);
             for (int j = 0; j < 2; j++) {
@@ -129,25 +244,26 @@ int main(int argc, char** argv)
                 last[j] = val[j];
             }
         }
-        bool is_pak32 = (sum[0] < sum[1]);
-        printf("Detected %s PAK format\n\n", is_pak32 ? "A17/32-bit" : "A18/64-bit");
+        is_pak64 = (sum[0] > sum[1]);
+        printf("Detected %s PAK format\n\n", is_pak64 ? "A18/64-bit" : "A17/32-bit");
 
         // Store the data we'll need to reconstruct the archibe to a JSON file
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", argv[1]);
-        json_object_set_number(json_object(json), "version", header.version);
-        json_object_set_number(json_object(json), "flags", header.flags);
-        json_object_set_number(json_object(json), "nb_entries", header.nb_entries);
-        json_object_set_boolean(json_object(json), "64-bit", !is_pak32);
+        json_object_set_string(json_object(json), "name", change_extension(argv[1], ".pak"));
+        json_object_set_number(json_object(json), "version", hdr.version);
+        json_object_set_number(json_object(json), "header_size", hdr.header_size);
+        json_object_set_number(json_object(json), "flags", hdr.flags);
+        json_object_set_number(json_object(json), "nb_files", hdr.nb_files);
+        json_object_set_boolean(json_object(json), "64-bit", is_pak64);
 
-        bool skip_decode;
-        int64_t file_data_offset = sizeof(pak_header) + (int64_t)header.nb_entries * (is_pak32 ? sizeof(pak_entry32) : sizeof(pak_entry64));
+        uint64_t file_data_offset = sizeof(pak_header) +
+            (uint64_t)hdr.nb_files * (is_pak64 ? sizeof(pak_entry64) : sizeof(pak_entry32));
         JSON_Value* json_files_array = json_value_init_array();
         printf("OFFSET    SIZE     NAME\n");
-        for (uint32_t i = 0; i < header.nb_entries; i++) {
+        for (uint32_t i = 0; i < hdr.nb_files; i++) {
             int j;
             for (j = 0; (j < 20) && (entry(i, key)[j] == 0); j++);
-            skip_decode = (j >= 20);
+            bool skip_decode = (j >= 20);
             if (!skip_decode)
                 decode((uint8_t*)entry(i, filename), entry(i, key), 128);
             for (size_t n = 0; n < strlen(entry(i, filename)); n++) {
@@ -155,10 +271,13 @@ int main(int argc, char** argv)
                     entry(i, filename)[n] = PATH_SEP;
             }
             printf("%09" PRIx64 " %08x %s%c\n", entry(i, data_offset) + file_data_offset,
-                entry(i, length), entry(i, filename), skip_decode ? '*' : ' ');
+                entry(i, size), entry(i, filename), skip_decode ? '*' : ' ');
             JSON_Value* json_file = json_value_init_object();
             json_object_set_string(json_object(json_file), "name", entry(i, filename));
-            json_object_set_boolean(json_object(json_file), "skip_decode", skip_decode);
+            json_object_set_string(json_object(json_file), "key", key_to_string(entry(i, key)));
+            uint64_t flags = (is_pak64) ? getbe64(&entries64[i].flags) : getbe32(&entries32[i].flags);
+            if (flags != 0)
+                json_object_set_number(json_object(json_file), "flags", (double)flags);
             json_array_append_value(json_array(json_files_array), json_file);
             strcpy(path, &entry(i, filename)[1]);
             for (size_t n = strlen(path); n > 0; n--) {
@@ -171,32 +290,26 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: Can't create path '%s'\n", path);
                 goto out;
             }
-            fseek64(src, entry(i, data_offset) + file_data_offset, SEEK_SET);
-            buf = malloc(entry(i, length));
+            fseek64(file, entry(i, data_offset) + file_data_offset, SEEK_SET);
+            buf = malloc(entry(i, size));
             if (buf == NULL) {
                 fprintf(stderr, "ERROR: Can't allocate entries\n");
                 goto out;
             }
-            if (fread(buf, 1, entry(i, length), src) != entry(i, length)) {
+            if (fread(buf, 1, entry(i, size), file) != entry(i, size)) {
                 fprintf(stderr, "ERROR: Can't read archive\n");
                 goto out;
             }
             if (!skip_decode)
-                decode(buf, entry(i, key), entry(i, length));
-            if (!write_file(buf, entry(i, length), &entry(i, filename)[1], false))
+                decode(buf, entry(i, key), entry(i, size));
+            if (!write_file(buf, entry(i, size), &entry(i, filename)[1], false))
                 goto out;
             free(buf);
             buf = NULL;
         }
 
         json_object_set_value(json_object(json), "files", json_files_array);
-        size_t i, len = strlen(argv[1]);
-        for (i = len - 1; (argv[1][i] != '.') && (i > 0); i--);
-        if (i != 0)
-            argv[1][i] = 0;
-        strncpy(path, argv[1], sizeof(path) - 1);
-        snprintf(path, sizeof(path), "%s.json", argv[1]);
-        json_serialize_to_file_pretty(json, path);
+        json_serialize_to_file_pretty(json, change_extension(argv[1], ".json"));
         r = 0;
     }
 
@@ -204,8 +317,8 @@ out:
     json_value_free(json);
     free(buf);
     free(entries64);
-    if (src != NULL)
-        fclose(src);
+    if (file != NULL)
+        fclose(file);
 
     if (r != 0) {
         fflush(stdin);

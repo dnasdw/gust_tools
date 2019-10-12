@@ -71,9 +71,9 @@
 #if defined(_WIN32)
 static __inline char* basename(const char* path)
 {
-    static char app_name[64];
-    _splitpath_s(path, NULL, 0, NULL, 0, app_name, sizeof(app_name), NULL, 0);
-    return app_name;
+    static char basename[128];
+    _splitpath_s(path, NULL, 0, NULL, 0, basename, sizeof(basename), NULL, 0);
+    return basename;
 }
 #endif
 
@@ -160,6 +160,7 @@ static __inline void setbe64(const void* p, const uint64_t v)
 }
 
 bool create_path(char* path);
+char* change_extension(const char* path, const char* extension);
 
 bool is_file(const char* path);
 bool is_directory(const char* path);

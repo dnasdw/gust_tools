@@ -297,7 +297,7 @@ int main(int argc, char** argv)
 
         // Keep the information required to recreate the archive in a JSON file
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", argv[1]);
+        json_object_set_string(json_object(json), "name", basename(argv[1]));
         char version[5];
         for (int i = 0; i < 4; i++)
             version[i] = hdr->version[i];
@@ -372,7 +372,7 @@ int main(int argc, char** argv)
                 uint32_t size = getle32(&buf[pos]);
                 assert(pos + size < g1t_size);
                 if ((size == 0) || (size % 4 != 0)) {
-                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%04x\n", size);
+                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%08x\n", size);
                 } else {
                     JSON_Value* json_extra_array_val = json_value_init_array();
                     JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);

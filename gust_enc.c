@@ -572,7 +572,7 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     }
     // The 3rd checksum is probably leftover from the compression algorithm used
 #if defined(VALIDATE_CHECKSUM)
-    printf("3rd checksum = 0x%04x\n", getbe32(&footer[3]));
+    printf("3rd checksum = 0x%08x\n", getbe32(&footer[3]));
 #endif
     uint32_t checksum[3] = { 0 - getbe32(&footer[1]), getbe32(&footer[2]), getbe32(&footer[3]) };
 
@@ -687,7 +687,7 @@ int main(int argc, char** argv)
 #endif
 
 #if defined(VALIDATE_CHECKSUM)
-        printf("UnGlaze: 0x%04x, src_size = 0x%04x\n", unglaze(dst, dst_size, src, src_size), src_size);
+        printf("UnGlaze: 0x%08x, src_size = 0x%08x\n", unglaze(dst, dst_size, src, src_size), src_size);
 #endif
 
         // Scramble the Glaze compressed file

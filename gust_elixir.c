@@ -313,7 +313,7 @@ int main(int argc, char** argv)
 
         // Now that we have an uncompressed .elixir file, extract the files
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", argv[1]);
+        json_object_set_string(json_object(json), "name", basename(argv[1]));
         json_object_set_boolean(json_object(json), "compressed", (gz_pos != NULL));
 
         *elixir_pos = 0;

@@ -72,6 +72,18 @@ bool is_directory(const char* path)
     return (stat(path, &st) == 0) && S_ISDIR(st.st_mode);
 }
 
+char* change_extension(const char* path, const char* extension)
+{
+    static char new_path[256];
+    strncpy(new_path, basename(path), sizeof(new_path));
+    for (size_t i = 0; i < sizeof(new_path); i++) {
+        if (new_path[i] == '.')
+            new_path[i] = 0;
+    }
+    strncat(new_path, extension, sizeof(new_path) - strlen(new_path));
+    return new_path;
+}
+
 uint32_t read_file(const char* path, uint8_t** buf)
 {
     FILE* file = fopen(path, "rb");
