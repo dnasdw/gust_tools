@@ -106,7 +106,7 @@ int main(int argc, char** argv)
             "Extracts (file) or recreates (directory) a Gust .g1t texture archive.\n\n"
             "This application will also create a backup (.bak) of the original, when the target\n"
             "is being overwritten for the first time.\n",
-            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
+            appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
         }
 
         printf("OFFSET   SIZE     NAME");
-        for (size_t i = 0; i < strlen(argv[1]); i++)
+        for (size_t i = 0; i < strlen(basename(argv[1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
         for (uint32_t i = 0; i < hdr.nb_textures; i++) {
@@ -182,7 +182,7 @@ int main(int argc, char** argv)
             tex.type = (uint8_t)json_object_get_number(texture_entry, "type");
             tex.flags = json_object_get_uint32(texture_entry, "flags");
             // Read the DDS file
-            snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, json_object_get_string(texture_entry, "name"));
+            snprintf(path, sizeof(path), "%s%c%s", basename(argv[1]), PATH_SEP, json_object_get_string(texture_entry, "name"));
             uint32_t dds_size = read_file(path, &buf);
             if (dds_size < sizeof(DDS_HEADER) + 16)
                 goto out;
@@ -243,7 +243,7 @@ int main(int argc, char** argv)
         }
         r = 0;
     } else {
-        printf("Extracting '%s'...\n", argv[1]);
+        printf("Extracting '%s'...\n", basename(argv[1]));
         char* g1t_pos = strstr(argv[1], ".g1t");
         if (g1t_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
@@ -315,7 +315,7 @@ int main(int argc, char** argv)
         JSON_Value* json_textures_array = json_value_init_array();
 
         printf("OFFSET   SIZE     NAME");
-        for (size_t i = 0; i < strlen(argv[1]); i++)
+        for (size_t i = 0; i < strlen(basename(argv[1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
@@ -345,7 +345,7 @@ int main(int argc, char** argv)
             uint32_t texture_size = highest_mipmap_size;
             for (int j = 0; j < tex->mipmaps - 1; j++)
                 texture_size += highest_mipmap_size / (4 << (j * 2));
-            snprintf(path, sizeof(path), "%s%c%03d.dds", argv[1], PATH_SEP, i);
+            snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
             printf("%08x %08x %s %-10s %d\n", hdr->header_size + offset_table[i],

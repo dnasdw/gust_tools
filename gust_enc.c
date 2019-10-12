@@ -542,14 +542,14 @@ out:
 }
 
 static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* seeds,
-                           uint32_t* required_size)
+                           uint32_t* working_size)
 {
     uint32_t type = getbe32(payload);
     if (type != 2) {
         fprintf(stderr, "ERROR: Invalid type: 0x%08x\n", type);
         return 0;
     }
-    *required_size = getbe32(&payload[4]);
+    *working_size = getbe32(&payload[4]);
     payload = &payload[E_HEADER_SIZE];
     payload_size -= E_HEADER_SIZE;
 
@@ -618,7 +618,7 @@ int main(int argc, char** argv)
     uint32_t src_size, dst_size;
     uint8_t *src = NULL, *dst = NULL;
     int r = -1;
-    const char* app_name = basename(argv[0]);
+    const char* app_name = appname(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
         printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
             "Encode or decode a Gust .e file.\n\n"
@@ -667,22 +667,19 @@ int main(int argc, char** argv)
 
     // Read the source file
     src_size = read_file(argv[argc - 1], &src);
-    if (src_size == 0) {
-        fprintf(stderr, "ERROR: Can't read source xml\n");
+    if (src_size == 0)
         goto out;
-    }
 
     char* e_pos = strstr(argv[argc - 1], ".e");
     if (e_pos == NULL) {
-        printf("Encoding '%s'...\n", argv[argc - 1]);
-        snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
+        printf("Encoding '%s'...\n", basename(argv[argc - 1]));
         // Compress and scramble a file
         dst_size = glaze(src, src_size, &dst);
         if (dst_size == 0)
             goto out;
 
 #if defined(CREATE_EXTRA_FILES)
-        snprintf(path, sizeof(path), "%s.glaze", argv[argc - 1]);
+        snprintf(path, sizeof(path), "%s.glaze", basename(argv[argc - 1]));
         write_file(dst, dst_size, path, false);
 #endif
 
@@ -697,12 +694,13 @@ int main(int argc, char** argv)
         // is largest (because this buffer will be zeroed for the size of the compressed stream
         // plus the size of the bytecode table once decompression is complete).
         uint32_t working_size = max(src_size, dst_size + getbe32(&dst[2 * sizeof(uint32_t)]));
+        snprintf(path, sizeof(path), "%s.e", argv[argc - 1]);
         if (!scramble(dst, dst_size, path, &seeds, working_size))
             goto out;
 
         r = 0;
     } else {
-        printf("Decoding '%s'...\n", argv[argc - 1]);
+        printf("Decoding '%s'...\n", basename(argv[argc - 1]));
         // Decode a file
         if (((src_size % 4) != 0) || (src_size <= E_HEADER_SIZE + E_FOOTER_SIZE)) {
             fprintf(stderr, "ERROR: Invalid file size\n");
@@ -710,8 +708,9 @@ int main(int argc, char** argv)
         }
 
         // Descramble the data
-        uint32_t payload_size = unscramble(src, src_size, &seeds, &dst_size);
-        if ((payload_size == 0) || (dst_size == 0))
+        uint32_t working_size = 0;
+        uint32_t payload_size = unscramble(src, src_size, &seeds, &working_size);
+        if ((payload_size == 0) || (working_size == 0))
             goto out;
 
 #if defined(CREATE_EXTRA_FILES)
@@ -722,17 +721,16 @@ int main(int argc, char** argv)
 #if defined(VALIDATE_CHECKSUM)
         // "We can rebuild (it), we have the technology."
         snprintf(path, sizeof(path), "%s.rebuilt", argv[argc - 1]);
-        scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, dst_size);
+        scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, working_size);
 #endif
 
         // Uncompress descrambled data
-        dst = malloc(dst_size);
+        dst = malloc(working_size);
         if (dst == NULL)
             goto out;
-        if (unglaze(&src[E_HEADER_SIZE], payload_size, dst, dst_size) == 0) {
-            fprintf(stderr, "ERROR: Can't decompress file\n");
+        dst_size = unglaze(&src[E_HEADER_SIZE], payload_size, dst, working_size);
+        if (dst_size == 0)
             goto out;
-        }
 
         *e_pos = 0;
         if (!write_file(dst, dst_size, argv[argc - 1], true))

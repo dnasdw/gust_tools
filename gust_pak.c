@@ -99,7 +99,7 @@ int main(int argc, char** argv)
         printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\n"
             "Usage: %s <Gust PAK file>\n\n"
             "Extract all the files from a Gust .pak archive.\n",
-            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
+            appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 

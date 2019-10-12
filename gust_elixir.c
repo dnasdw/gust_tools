@@ -21,6 +21,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifndef _WIN32
+#include <unistd.h>
+#define _unlink unlink
+#endif
 
 #include "util.h"
 #include "parson.h"
@@ -70,7 +74,7 @@ int main(int argc, char** argv)
             "Extracts (file) or recreates (directory) a Gust .elixir archive.\n\n"
             "This application will also create a backup (.bak) of the original, when the target\n"
             "is being overwritten for the first time.\n",
-            basename(argv[0]), GUST_TOOLS_VERSION_STR, basename(argv[0]));
+            appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
         return 0;
     }
 
@@ -132,7 +136,7 @@ int main(int argc, char** argv)
         printf("OFFSET   SIZE     NAME\n");
         for (uint32_t i = 0; i < hdr.nb_files; i++) {
             table[i].offset = ftell(file);
-            snprintf(path, sizeof(path), "%s%c%s", argv[1], PATH_SEP, json_array_get_string(json_files_array, i));
+            snprintf(path, sizeof(path), "%s%c%s", basename(argv[1]), PATH_SEP, json_array_get_string(json_files_array, i));
             table[i].size = read_file(path, &buf);
             if (table[i].size == 0) {
                 free(table);
@@ -214,7 +218,7 @@ int main(int argc, char** argv)
 
         r = 0;
     } else {
-        printf("Extracting '%s'...\n", argv[1]);
+        printf("Extracting '%s'...\n", basename(argv[1]));
         char* elixir_pos = strstr(argv[1], ".elixir");
         if (elixir_pos == NULL) {
             fprintf(stderr, "ERROR: File should have a '.elixir[.gz]' extension\n");

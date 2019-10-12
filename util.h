@@ -69,12 +69,20 @@
 #endif
 
 #if defined(_WIN32)
-static __inline char* basename(const char* path)
+static __inline char* _basename(const char* path, bool remove_extension)
 {
     static char basename[128];
-    _splitpath_s(path, NULL, 0, NULL, 0, basename, sizeof(basename), NULL, 0);
+    static char ext[64];
+    ext[0] = 0;
+    _splitpath_s(path, NULL, 0, NULL, 0, basename, sizeof(basename), ext, sizeof(ext));
+    if ((ext[0] != 0) && !remove_extension)
+        strncat(basename, ext, sizeof(basename) - strlen(basename));
     return basename;
 }
+#define basename(path) _basename(path, false)
+#define appname(path) _basename(path, true)
+#else
+#define appname(path) basename(path)
 #endif
 
 #if defined (_MSC_VER)

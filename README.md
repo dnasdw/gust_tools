@@ -68,7 +68,7 @@ Happy modding! :smile:
 License
 =======
 
-[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)
+[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) or later.
 
 Thanks
 ======

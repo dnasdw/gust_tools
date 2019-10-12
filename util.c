@@ -75,7 +75,7 @@ bool is_directory(const char* path)
 char* change_extension(const char* path, const char* extension)
 {
     static char new_path[256];
-    strncpy(new_path, basename(path), sizeof(new_path));
+    strncpy(new_path, basename(path), sizeof(new_path) - 1);
     for (size_t i = 0; i < sizeof(new_path); i++) {
         if (new_path[i] == '.')
             new_path[i] = 0;
@@ -88,7 +88,7 @@ uint32_t read_file(const char* path, uint8_t** buf)
 {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
-        fprintf(stderr, "ERROR: Can't open file '%s'", path);
+        fprintf(stderr, "ERROR: Can't open file '%s'\n", path);
         return 0;
     }
 
@@ -102,7 +102,7 @@ uint32_t read_file(const char* path, uint8_t** buf)
         goto out;
     }
     if (fread(*buf, 1, size, file) != size) {
-        fprintf(stderr, "ERROR: Can't read file");
+        fprintf(stderr, "ERROR: Can't read file\n");
         size = 0;
     }
 out:

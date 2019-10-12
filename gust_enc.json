@@ -73,6 +73,46 @@
             "fence": 0x156a
         },
         {
+            "id": "A20",
+            "name": "Atelier Lulua",
+            "main": [
+                0x6d7b,
+                0xcac3,
+                0x747b
+            ],
+            "table": [
+                0xa8e5,
+                0xb0b1,
+                0x8a5b
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x156a
+        },
+        {
+            "id": "ANW",
+            "name": "Ateliers of the New World (Nelke & the Legendary Alchemists)",
+            "main": [
+                0x6d7b,
+                0xcac3,
+                0x747b
+            ],
+            "table": [
+                0xa8e5,
+                0xb0b1,
+                0x8a5b
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x156a
+        },
+        {
             "id": "BR",
             "name": "Blue Reflection",
             "main": [
