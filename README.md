@@ -22,6 +22,7 @@ Notes
 It should therefore works with all of the Atelier PC ports (including _Atelier Sophie_) as well as _Blue Reflection_ archives.
 
 `gust_enc` only works on the games where for which the scrambling seeds are known. See `gust_enc.json` for details.
+You can find a primer on the `.e` format, as well as what `gust_enc` does [here](https://gist.github.com/VitaSmith/ab384400bd992413ee0da401457abee1).
 
 In most cases, the repacking of an archive relies on a corresponding `.json` to have been created during unpacking.
 You will not be able to recreate an archive if a `.json` file does not exist for it, either in the directory (`.elixir`, `.g1t`)
