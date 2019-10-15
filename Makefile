@@ -4,6 +4,7 @@ else
   EXE :=
 endif
 
+# Yeah, there's probably a better way than this -- I'll gladly accept a pull request, thank you!
 BIN1=gust_pak
 SRC1=${BIN1}.c util.c parson.c
 OBJ1=${SRC1:.c=.o}
@@ -24,10 +25,14 @@ SRC4=${BIN4}.c util.c parson.c
 OBJ4=${SRC4:.c=.o}
 DEP4=${SRC4:.c=.d}
 
+BIN5=gust_ebm
+SRC5=${BIN5}.c util.c parson.c
+OBJ5=${SRC5:.c=.o}
+DEP5=${SRC5:.c=.d}
 
-BIN=${BIN1}${EXE} ${BIN2}${EXE} ${BIN3}${EXE} ${BIN4}${EXE}
-OBJ=${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4}
-DEP=${DEP1} ${DEP2} ${DEP3} ${DEP4}
+BIN=${BIN1}${EXE} ${BIN2}${EXE} ${BIN3}${EXE} ${BIN4}${EXE} ${BIN5}${EXE}
+OBJ=${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4} ${OBJ5}
+DEP=${DEP1} ${DEP2} ${DEP3} ${DEP4} ${DEP5}
 
 # -Wno-sequence-point because *dst++ = dst[-d]; is only ambiguous for people who don't know how CPUs work.
 CFLAGS=-std=c99 -pipe -fvisibility=hidden -Wall -Wextra -Werror -Wno-sequence-point -Wno-unknown-pragmas -DNDEBUG -D_GNU_SOURCE -O2
@@ -53,6 +58,10 @@ ${BIN3}${EXE}: ${OBJ3}
 	@${CC} ${LDFLAGS} -o $@ $^
 
 ${BIN4}${EXE}: ${OBJ4}
+	@echo [L] $@
+	@${CC} ${LDFLAGS} -o $@ $^
+
+${BIN5}${EXE}: ${OBJ5}
 	@echo [L] $@
 	@${CC} ${LDFLAGS} -o $@ $^
 

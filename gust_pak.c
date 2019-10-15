@@ -254,7 +254,7 @@ int main(int argc, char** argv)
 
         // Store the data we'll need to reconstruct the archibe to a JSON file
         json = json_value_init_object();
-        json_object_set_string(json_object(json), "name", change_extension(argv[argc - 1], ".pak"));
+        json_object_set_string(json_object(json), "name", change_extension(basename(argv[argc - 1]), ".pak"));
         json_object_set_number(json_object(json), "version", hdr.version);
         json_object_set_number(json_object(json), "header_size", hdr.header_size);
         json_object_set_number(json_object(json), "flags", hdr.flags);

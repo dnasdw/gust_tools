@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\gust_enc.c" />
+    <ClCompile Include="..\gust_ebm.c" />
     <ClCompile Include="..\parson.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
@@ -29,9 +29,9 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{A634DC8E-CE9D-4154-9C73-FC0E5713C563}</ProjectGuid>
+    <ProjectGuid>{6494F80D-FF09-48B9-AE96-DB70AB476204}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>gust_enc</RootNamespace>
+    <RootNamespace>gust_ebm</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
