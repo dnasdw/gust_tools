@@ -10,6 +10,7 @@
      * 5. Go further down and look for 2 literals, one of which is half the value of the first. That's fence.
      * 6. Finally look for a call near the end where 80h is used as parameter. The other literal there is main[2].
      * Note: Except for fence, which is even, all of the seeds are 16-bit prime numbers.
+     * If needed, you can access deobfuscated binary code (to use with IDA) by saving the WinDbg dump.
      */
     "seeds": [
         {
@@ -91,6 +92,26 @@
                 0x0b
             ],
             "fence": 0x156a
+        },
+        {
+            "id": "A21",
+            "name": "Atelier Ryza",
+            "main": [
+                0x6d3f,
+                0xcb53,
+                0x74b9
+            ],
+            "table": [
+                0xa83b,
+                0xb11d,
+                0x88a5
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x1462
         },
         {
             "id": "ANW",
