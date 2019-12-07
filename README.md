@@ -5,6 +5,7 @@
 
 A set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
 [_Atelier series_](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
+[_Nights of Azure series_](https://store.steampowered.com/search/?term=%22nights%20of%20azure%22&category1=998),
 [_Blue Reflection_](https://store.steampowered.com/app/658260/BLUE_REFLECTION__BLUE_REFLECTION/), ...
 
 Utilities
