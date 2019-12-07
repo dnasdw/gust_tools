@@ -190,7 +190,7 @@ int main(int argc, char** argv)
             snprintf(path, sizeof(path), "%s%c%s", basename(argv[argc - 1]), PATH_SEP,
                 json_object_get_string(texture_entry, "name"));
             uint32_t dds_size = read_file(path, &buf);
-            if (dds_size < sizeof(DDS_HEADER) + 8) {
+            if (dds_size <= sizeof(DDS_HEADER)) {
                 fprintf(stderr, "ERROR: '%s' is too small\n", path);
                 goto out;
             }
@@ -289,12 +289,10 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: File size mismatch\n");
             goto out;
         }
-        if ((hdr->version[0] != '0') || (hdr->version[2] != '0') ||
-            ((hdr->version[1] != '5') && (hdr->version[1] != '6')) ||
-            (hdr->version[3] != '0')) {
-            fprintf(stderr, "ERROR: Unsupported G1T version %c%c.%c%x\n",
-                hdr->version[1], hdr->version[2], hdr->version[0], hdr->version[0]);
-            goto out;
+        if ((hdr->version[3] != '0') || (hdr->version[2] != '0') ||
+            ((hdr->version[1] != '5') && (hdr->version[1] != '6'))) {
+            fprintf(stderr, "WARNING: Potentially unsupported G1T version %c%c.%c%c\n",
+                hdr->version[3], hdr->version[2], hdr->version[1], hdr->version[0]);
         }
         if (hdr->extra_size != 0) {
             fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
@@ -331,13 +329,29 @@ int main(int argc, char** argv)
             json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
             uint32_t pos = hdr->header_size + offset_table[i];
             g1t_tex_header* tex = (g1t_tex_header*)&buf[pos];
+            pos += sizeof(g1t_tex_header);
+            uint32_t width = 1 << tex->dx;
+            uint32_t height = 1 << tex->dy;
+            uint32_t extra_size = 0;
+            if (tex->flags & G1T_TEX_EXTRA_FLAG) {
+                extra_size = getle32(&buf[pos]);
+                assert(pos + extra_size < g1t_size);
+                if ((extra_size == 0) || (extra_size % 4 != 0))
+                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%08x\n", extra_size);
+            }
+            // Non power-of-two width and height may be provided in the extra data
+            if (extra_size >= 0x14) {
+                if (width == 1)
+                    width = getle32(&buf[pos + 0x0c]);
+                if (height == 1)
+                    height = getle32(&buf[pos + 0x10]);
+            }
+
             JSON_Value* json_texture = json_value_init_object();
             snprintf(path, sizeof(path), "%03d.dds", i);
             json_object_set_string(json_object(json_texture), "name", path);
             json_object_set_number(json_object(json_texture), "type", tex->type);
             json_object_set_number(json_object(json_texture), "flags", tex->flags);
-            uint32_t width = 1 << tex->dx;
-            uint32_t height = 1 << tex->dy;
             uint32_t texture_format, bits_per_pixel;
             switch (tex->type) {
             case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
@@ -377,20 +391,13 @@ int main(int argc, char** argv)
                 fclose(dst);
                 continue;
             }
-            pos += sizeof(g1t_tex_header);
             if (tex->flags & G1T_TEX_EXTRA_FLAG) {
-                uint32_t size = getle32(&buf[pos]);
-                assert(pos + size < g1t_size);
-                if ((size == 0) || (size % 4 != 0)) {
-                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%08x\n", size);
-                } else {
-                    JSON_Value* json_extra_array_val = json_value_init_array();
-                    JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);
-                    for (uint32_t j = 0; j < size; j += 4)
-                        json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
-                    json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
-                }
-                pos += size;
+                JSON_Value* json_extra_array_val = json_value_init_array();
+                JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);
+                for (uint32_t j = 0; j < extra_size; j += 4)
+                    json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
+                json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
+                pos += extra_size;
             }
             if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
                 fprintf(stderr, "ERROR: Can't write DDS data\n");
