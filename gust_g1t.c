@@ -190,8 +190,10 @@ int main(int argc, char** argv)
             snprintf(path, sizeof(path), "%s%c%s", basename(argv[argc - 1]), PATH_SEP,
                 json_object_get_string(texture_entry, "name"));
             uint32_t dds_size = read_file(path, &buf);
-            if (dds_size < sizeof(DDS_HEADER) + 16)
+            if (dds_size < sizeof(DDS_HEADER) + 8) {
+                fprintf(stderr, "ERROR: '%s' is too small\n", path);
                 goto out;
+            }
             if (*((uint32_t*)buf) != DDS_MAGIC) {
                 fprintf(stderr, "ERROR: '%s' is not a DDS file\n", path);
                 goto out;
