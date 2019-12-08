@@ -61,8 +61,6 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
 {
     if ((fd == NULL) || (width == 0) || (height == 0))
         return 0;
-    if ((format < DDS_FORMAT_DXT1) && (format > DDS_FORMAT_BC7))
-        return 0;
 
     DDS_HEADER header = { 0 };
     header.size = 124;
@@ -70,8 +68,18 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
     header.height = height;
     header.width = width;
     header.ddspf.size = 32;
-    header.ddspf.flags = DDS_FOURCC;
-    header.ddspf.fourCC = get_fourCC(format);
+    if (format == DDS_FORMAT_RGBA || format == DDS_FORMAT_ABGR) {
+        header.ddspf.flags = DDS_RGBA;
+        header.ddspf.RGBBitCount = 32;
+        // We're actually saving ARGB to keep VS and PhotoShop happy
+        header.ddspf.RBitMask = 0x00ff0000;
+        header.ddspf.GBitMask = 0x0000ff00;
+        header.ddspf.BBitMask = 0x000000ff;
+        header.ddspf.ABitMask = 0xff000000;
+    } else {
+        header.ddspf.flags = DDS_FOURCC;
+        header.ddspf.fourCC = get_fourCC(format);
+    }
     header.caps = DDS_SURFACE_FLAGS_TEXTURE;
     if (mipmaps != 0) {
         header.mipMapCount = mipmaps;
@@ -354,6 +362,8 @@ int main(int argc, char** argv)
             json_object_set_number(json_object(json_texture), "flags", tex->flags);
             uint32_t texture_format, bits_per_pixel;
             switch (tex->type) {
+            case 0x00: texture_format = DDS_FORMAT_ABGR; bits_per_pixel = 32; break;
+            case 0x01: texture_format = DDS_FORMAT_RGBA; bits_per_pixel = 32; break;
             case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
             case 0x08: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
             case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
@@ -398,6 +408,17 @@ int main(int argc, char** argv)
                     json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
                 json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
                 pos += extra_size;
+            }
+            if ((texture_format == DDS_FORMAT_RGBA) || (texture_format == DDS_FORMAT_ABGR)) {
+                // So, what's the point of being able to specify a fucking
+                // mask for RGBA, if tools like Visual Studio or PhotoShop
+                // can't be bothered to actually honor it and enforce ARGB?
+                for (uint32_t j = 0; j < texture_size; j += 4) {
+                    uint32_t w = (texture_format == DDS_FORMAT_RGBA) ?
+                        getbe32(&buf[pos + j]) : getle32(&buf[pos + j]);
+                    uint32_t a = (w & 0xff) << 24;
+                    setbe32(&buf[pos + j], a | (w >> 8));
+                }
             }
             if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
                 fprintf(stderr, "ERROR: Can't write DDS data\n");
