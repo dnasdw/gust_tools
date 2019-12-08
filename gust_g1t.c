@@ -259,6 +259,29 @@ int main(int argc, char** argv)
                     }
                 }
             }
+            // Convert ARGB back to RGBA or ABGR
+            if ((tex.type == 0x00) || (tex.type == 0x01)) {
+                if (dds_size % sizeof(uint32_t) != 0) {
+                    fprintf(stderr, "ERROR: ARGB texture size should be a multiple of 32 bits\n");
+                    goto out;
+                }
+                if ((dds_header->ddspf.flags != DDS_RGBA) || (dds_header->ddspf.RGBBitCount != 32) ||
+                    (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
+                    (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0xff000000)) {
+                    fprintf(stderr, "ERROR: '%s' is not a supported ARGB texture we support\n", path);
+                    goto out;
+                }
+                uint32_t* p = (uint32_t*)&dds_header[1];
+                for (uint32_t j = 0; j < dds_size / 4; j++) {
+                    uint32_t w = getbe32(&p[j]);
+                    uint32_t a = w >> 24;
+                    w = (w << 8) | a;
+                    if (tex.type == 0x01)
+                        setbe32(&p[j], w);
+                    else
+                        setle32(&p[j], w);
+                }
+            }
             // Write texture
             if (fwrite(&dds_header[1], 1, dds_size, file) != dds_size) {
                 fprintf(stderr, "ERROR: Can't write texture data\n");
