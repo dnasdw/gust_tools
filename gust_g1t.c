@@ -28,12 +28,13 @@
 
 #define G1TG_MAGIC              0x47315447  // "G1GT"
 #define G1T_TEX_EXTRA_FLAG      0x10000000
+#define JSON_VERSION            1
 #define json_object_get_uint32  (uint32_t)json_object_get_number
 
 #pragma pack(push, 1)
 typedef struct {
     uint32_t    magic;
-    char        version[4];
+    uint32_t    version;
     uint32_t    total_size;
     uint32_t    header_size;
     uint32_t    nb_textures;
@@ -104,6 +105,7 @@ int main(int argc, char** argv)
     int r = -1;
     FILE *file = NULL;
     uint8_t* buf = NULL;
+    uint32_t* offset_table = NULL;
     uint32_t magic;
     char path[256];
     JSON_Value* json = NULL;
@@ -134,6 +136,12 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: Can't parse JSON data from '%s'\n", path);
             goto out;
         }
+        const uint32_t json_version = json_object_get_uint32(json_object(json), "json_version");
+        if (json_version != JSON_VERSION) {
+            fprintf(stderr, "ERROR: This utility is not compatible with the JSON file provided.\n"
+                "You need to (re)extract the '.g1t' using this application.\n");
+            goto out;
+        }
         const char* filename = json_object_get_string(json_object(json), "name");
         const char* version = json_object_get_string(json_object(json), "version");
         if ((filename == NULL) || (version == NULL))
@@ -147,7 +155,7 @@ int main(int argc, char** argv)
         }
         g1t_header hdr = { 0 };
         hdr.magic = G1TG_MAGIC;
-        memcpy(hdr.version, version, strlen(version));
+        hdr.version = getbe32(version);
         hdr.total_size = 0;  // To be rewritten when we're done
         hdr.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
         hdr.flags = json_object_get_uint32(json_object(json), "flags");
@@ -171,7 +179,7 @@ int main(int argc, char** argv)
             }
         }
 
-        uint32_t* offset_table = calloc(hdr.nb_textures, sizeof(uint32_t));
+        offset_table = calloc(hdr.nb_textures, sizeof(uint32_t));
         offset_table[0] = hdr.nb_textures * sizeof(uint32_t);
         if (fwrite(offset_table, hdr.nb_textures * sizeof(uint32_t), 1, file) != 1) {
             fprintf(stderr, "ERROR: Can't write texture offsets\n");
@@ -212,9 +220,12 @@ int main(int argc, char** argv)
             if (dds_header->ddspf.fourCC == get_fourCC(DDS_FORMAT_DX10))
                 dds_size -= sizeof(DDS_HEADER_DXT10);
             tex.mipmaps = (uint8_t)dds_header->mipMapCount;
-            tex.dx = (uint8_t)find_msb(dds_header->width);
-            tex.dy = (uint8_t)find_msb(dds_header->height);
-
+            // Are both width and height a power of two?
+            bool po2_sizes = (popcount(dds_header->width) == 1) && (popcount(dds_header->height) == 1);
+            if (po2_sizes) {
+                tex.dx = (uint8_t)find_msb(dds_header->width);
+                tex.dy = (uint8_t)find_msb(dds_header->height);
+            }
             // Write texture header
             if (fwrite(&tex, sizeof(tex), 1, file) != 1) {
                 fprintf(stderr, "ERROR: Can't write texture header\n");
@@ -223,8 +234,25 @@ int main(int argc, char** argv)
             // Write extra data
             if (tex.flags & G1T_TEX_EXTRA_FLAG) {
                 JSON_Array* extra_data_array = json_object_get_array(texture_entry, "extra_data");
+                uint32_t extra_data_size = (uint32_t)(json_array_get_count(extra_data_array) + 1) * sizeof(uint32_t);
+                if (!po2_sizes && extra_data_size < 4 * sizeof(uint32_t)) {
+                    fprintf(stderr, "ERROR: Non power-of-two width or height is missing from extra data\n");
+                    goto out;
+                }
+                if (fwrite(&extra_data_size, sizeof(uint32_t), 1, file) != 1) {
+                    fprintf(stderr, "ERROR: Can't write extra data size\n");
+                    goto out;
+                }
                 for (size_t j = 0; j < json_array_get_count(extra_data_array); j++) {
                     uint32_t extra_data = (uint32_t)json_array_get_number(extra_data_array, j);
+                    if ((j == 2) && (!po2_sizes) && (extra_data != dds_header->width)) {
+                        fprintf(stderr, "ERROR: DDS width and extra data width don't match\n");
+                        goto out;
+                    }
+                    if ((j == 3) && (!po2_sizes) && (extra_data != dds_header->height)) {
+                        fprintf(stderr, "ERROR: DDS height and extra data height don't match\n");
+                        goto out;
+                    }
                     if (fwrite(&extra_data, sizeof(uint32_t), 1, file) != 1) {
                         fprintf(stderr, "ERROR: Can't write extra data\n");
                         goto out;
@@ -297,25 +325,22 @@ int main(int argc, char** argv)
             fprintf(stderr, "ERROR: File size mismatch\n");
             goto out;
         }
-        if ((hdr->version[3] != '0') || (hdr->version[2] != '0') ||
-            ((hdr->version[1] != '5') && (hdr->version[1] != '6'))) {
-            fprintf(stderr, "WARNING: Potentially unsupported G1T version %c%c.%c%c\n",
-                hdr->version[3], hdr->version[2], hdr->version[1], hdr->version[0]);
-        }
+        char version[5];
+        setbe32(version, hdr->version);
+        version[4] = 0;
+        if (hdr->version >> 16 != 0x3030)
+            fprintf(stderr, "WARNING: Potentially unsupported G1T version %s\n", version);
         if (hdr->extra_size != 0) {
             fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
             goto out;
         }
 
-        uint32_t* offset_table = (uint32_t*)&buf[hdr->header_size];
+        uint32_t* x_offset_table = (uint32_t*)&buf[hdr->header_size];
 
         // Keep the information required to recreate the archive in a JSON file
         json = json_value_init_object();
+        json_object_set_number(json_object(json), "json_version", JSON_VERSION);
         json_object_set_string(json_object(json), "name", basename(argv[argc - 1]));
-        char version[5];
-        for (int i = 0; i < 4; i++)
-            version[i] = hdr->version[i];
-        version[4] = 0;
         json_object_set_string(json_object(json), "version", version);
         json_object_set_number(json_object(json), "nb_textures", hdr->nb_textures);
         json_object_set_number(json_object(json), "flags", hdr->flags);
@@ -335,18 +360,12 @@ int main(int argc, char** argv)
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
             // There's an array of flags after the hdr
             json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
-            uint32_t pos = hdr->header_size + offset_table[i];
+            uint32_t pos = hdr->header_size + x_offset_table[i];
             g1t_tex_header* tex = (g1t_tex_header*)&buf[pos];
             pos += sizeof(g1t_tex_header);
             uint32_t width = 1 << tex->dx;
             uint32_t height = 1 << tex->dy;
-            uint32_t extra_size = 0;
-            if (tex->flags & G1T_TEX_EXTRA_FLAG) {
-                extra_size = getle32(&buf[pos]);
-                assert(pos + extra_size < g1t_size);
-                if ((extra_size == 0) || (extra_size % 4 != 0))
-                    fprintf(stderr, "WARNING: Can't handle extra_data of size 0x%08x\n", extra_size);
-            }
+            uint32_t extra_size = (tex->flags & G1T_TEX_EXTRA_FLAG) ? getle32(&buf[pos]) : 0;
             // Non power-of-two width and height may be provided in the extra data
             if (extra_size >= 0x14) {
                 if (width == 1)
@@ -380,8 +399,8 @@ int main(int argc, char** argv)
             snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[argc - 1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
-            printf("%08x %08x %s %-10s %d\n", hdr->header_size + offset_table[i],
-                ((i + 1 == hdr->nb_textures) ? g1t_size : offset_table[i + 1]) - offset_table[i],
+            printf("%08x %08x %s %-10s %d\n", hdr->header_size + x_offset_table[i],
+                ((i + 1 == hdr->nb_textures) ? g1t_size : x_offset_table[i + 1]) - x_offset_table[i],
                 path, dims, tex->mipmaps);
             if (list_only)
                 continue;
@@ -402,11 +421,16 @@ int main(int argc, char** argv)
                 continue;
             }
             if (tex->flags & G1T_TEX_EXTRA_FLAG) {
-                JSON_Value* json_extra_array_val = json_value_init_array();
-                JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);
-                for (uint32_t j = 0; j < extra_size; j += 4)
-                    json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
-                json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
+                assert(pos + extra_size < g1t_size);
+                if ((extra_size < 8) || (extra_size % 4 != 0)) {
+                    fprintf(stderr, "ERROR: Can't handle extra_data of size 0x%08x\n", extra_size);
+                } else {
+                    JSON_Value* json_extra_array_val = json_value_init_array();
+                    JSON_Array* json_extra_array_obj = json_array(json_extra_array_val);
+                    for (uint32_t j = 4; j < extra_size; j += 4)
+                        json_array_append_number(json_extra_array_obj, getle32(&buf[pos + j]));
+                    json_object_set_value(json_object(json_texture), "extra_data", json_extra_array_val);
+                }
                 pos += extra_size;
             }
             if ((texture_format == DDS_FORMAT_RGBA) || (texture_format == DDS_FORMAT_ABGR)) {
@@ -441,6 +465,7 @@ int main(int argc, char** argv)
 out:
     json_value_free(json);
     free(buf);
+    free(offset_table);
     if (file != NULL)
         fclose(file);
 

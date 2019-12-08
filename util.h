@@ -108,6 +108,16 @@ static __inline uint32_t find_msb(uint32_t v)
 #endif
 }
 
+// Returns the number of bits set to 1
+static __inline uint32_t popcount(uint32_t v)
+{
+#if defined (_MSC_VER)
+    return __popcnt(v);
+#else
+    return __builtin__popcount(v);
+#endif
+}
+
 static __inline uint16_t getle16(const void* p)
 {
     return *(const uint16_t*)(const uint8_t*)(p);
