@@ -114,7 +114,7 @@ static __inline uint32_t popcount(uint32_t v)
 #if defined (_MSC_VER)
     return __popcnt(v);
 #else
-    return __builtin__popcount(v);
+    return __builtin_popcount(v);
 #endif
 }
 
