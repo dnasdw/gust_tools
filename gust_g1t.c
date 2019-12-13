@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "utf8.h"
 #include "util.h"
 #include "parson.h"
 #include "dds.h"
@@ -100,7 +101,7 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
     return r;
 }
 
-int main(int argc, char** argv)
+int main_utf8(int argc, char** argv)
 {
     int r = -1;
     FILE *file = NULL;
@@ -148,7 +149,7 @@ int main(int argc, char** argv)
             goto out;
         printf("Creating '%s'...\n", filename);
         create_backup(filename);
-        file = fopen(filename, "wb+");
+        file = fopen_utf8(filename, "wb+");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
             goto out;
@@ -317,7 +318,7 @@ int main(int argc, char** argv)
             goto out;
         }
 
-        file = fopen(argv[argc - 1], "rb");
+        file = fopen_utf8(argv[argc - 1], "rb");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't open file '%s'", argv[argc - 1]);
             goto out;
@@ -427,7 +428,7 @@ int main(int argc, char** argv)
                 path, dims, tex->mipmaps);
             if (list_only)
                 continue;
-            FILE* dst = fopen(path, "wb");
+            FILE* dst = fopen_utf8(path, "wb");
             if (dst == NULL) {
                 fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
                 continue;
@@ -498,8 +499,7 @@ out:
         (void)getchar();
     }
 
-#ifdef _CRTDBG_MAP_ALLOC
-    _CrtDumpMemoryLeaks();
-#endif
     return r;
 }
+
+CALL_MAIN

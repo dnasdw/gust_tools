@@ -26,6 +26,7 @@
 #define _unlink unlink
 #endif
 
+#include "utf8.h"
 #include "util.h"
 #include "parson.h"
 
@@ -58,7 +59,7 @@ typedef struct {
 } lxr_entry;
 #pragma pack(pop)
 
-int main(int argc, char** argv)
+int main_utf8(int argc, char** argv)
 {
     int r = -1;
     char path[256];
@@ -105,7 +106,7 @@ int main(int argc, char** argv)
         else
             strncpy(path, filename, sizeof(path));
         path[sizeof(path) - 1] = 0;
-        file = fopen(path, "wb+");
+        file = fopen_utf8(path, "wb+");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
             goto out;
@@ -178,7 +179,7 @@ int main(int argc, char** argv)
             compressor = calloc(1, sizeof(tdefl_compressor));
             if (compressor == NULL)
                 goto out;
-            dst = fopen(filename, "wb");
+            dst = fopen_utf8(filename, "wb");
             if (dst == NULL) {
                 fprintf(stderr, "ERROR: Can't create compressed file\n");
                 goto out;
@@ -232,7 +233,7 @@ int main(int argc, char** argv)
         }
         char* gz_pos = strstr(argv[argc - 1], ".gz");
 
-        file = fopen(argv[argc - 1], "rb");
+        file = fopen_utf8(argv[argc - 1], "rb");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't open elixir file '%s'", argv[argc - 1]);
             goto out;
@@ -395,8 +396,7 @@ out:
         (void)getchar();
     }
 
-#ifdef _CRTDBG_MAP_ALLOC
-    _CrtDumpMemoryLeaks();
-#endif
     return r;
 }
+
+CALL_MAIN

@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "utf8.h"
 #include "util.h"
 #include "parson.h"
 
@@ -42,7 +43,7 @@ typedef struct {
 } ebm_message;
 #pragma pack(pop)
 
-int main(int argc, char** argv)
+int main_utf8(int argc, char** argv)
 {
     int r = -1;
     uint8_t* buf = NULL;
@@ -66,7 +67,7 @@ int main(int argc, char** argv)
         const char* filename = json_object_get_string(json_object(json), "name");
         printf("Creating '%s' from JSON...\n", filename);
         create_backup(filename);
-        file = fopen(filename, "wb");
+        file = fopen_utf8(filename, "wb");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Cannot create file '%s'\n", filename);
             goto out;
@@ -161,8 +162,7 @@ out:
         (void)getchar();
     }
 
-#ifdef _CRTDBG_MAP_ALLOC
-    _CrtDumpMemoryLeaks();
-#endif
     return r;
 }
+
+CALL_MAIN

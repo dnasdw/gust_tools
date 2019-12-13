@@ -23,6 +23,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "utf8.h"
 #include "util.h"
 #include "parson.h"
 
@@ -84,7 +85,7 @@ static uint8_t* string_to_key(const char* str)
 #define entry(i, m) (is_pak64 ? entries64[i].m :(entries32[i]).m)
 #define set_entry(i, m, v) do {if (is_pak64) entries64[i].m = v; else (entries32[i]).m = (uint32_t)(v);} while(0)
 
-int main(int argc, char** argv)
+int main_utf8(int argc, char** argv)
 {
     int r = -1;
     FILE* file = NULL;
@@ -129,7 +130,7 @@ int main(int argc, char** argv)
         is_pak64 = json_object_get_boolean(json_object(json), "64-bit");
         printf("Creating '%s'...\n", filename);
         create_backup(filename);
-        file = fopen(filename, "wb+");
+        file = fopen_utf8(filename, "wb+");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
             goto out;
@@ -203,7 +204,7 @@ int main(int argc, char** argv)
         r = 0;
     } else {
         printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
-        file = fopen(argv[argc - 1], "rb");
+        file = fopen_utf8(argv[argc - 1], "rb");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't open PAK file '%s'", argv[argc - 1]);
             goto out;
@@ -335,8 +336,7 @@ out:
         (void)getchar();
     }
 
-#ifdef _CRTDBG_MAP_ALLOC
-    _CrtDumpMemoryLeaks();
-#endif
     return r;
 }
+
+CALL_MAIN

@@ -41,6 +41,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "utf8.h"
 #include "util.h"
 #include "parson.h"
 
@@ -611,7 +612,7 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     return payload_size;
 }
 
-int main(int argc, char** argv)
+int main_utf8(int argc, char** argv)
 {
     seed_data seeds;
     char path[256];
@@ -752,8 +753,7 @@ out:
         (void)getchar();
     }
 
-#ifdef _CRTDBG_MAP_ALLOC
-    _CrtDumpMemoryLeaks();
-#endif
     return r;
 }
+
+CALL_MAIN

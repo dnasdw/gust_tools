@@ -32,6 +32,7 @@
  * Note however that you only get about 50 usable bits for numeric storage, not 64. */
 #define PARSON_FORCE_HEX
 
+#include "utf8.h"
 #include "parson.h"
 
 #include <stdio.h>
@@ -307,7 +308,7 @@ static int is_decimal(const char *string, size_t length) {
 }
 
 static char * read_file(const char * filename) {
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen_utf8(filename, "r");
     size_t size_to_read = 0;
     size_t size_read = 0;
     long pos;
@@ -1564,7 +1565,7 @@ JSON_Status json_serialize_to_file(const JSON_Value *value, const char *filename
     if (serialized_string == NULL) {
         return JSONFailure;
     }
-    fp = fopen(filename, "w");
+    fp = fopen_utf8(filename, "w");
     if (fp == NULL) {
         json_free_serialized_string(serialized_string);
         return JSONFailure;
@@ -1624,7 +1625,7 @@ JSON_Status json_serialize_to_file_pretty(const JSON_Value *value, const char *f
     if (serialized_string == NULL) {
         return JSONFailure;
     }
-    fp = fopen(filename, "w");
+    fp = fopen_utf8(filename, "w");
     if (fp == NULL) {
         json_free_serialized_string(serialized_string);
         return JSONFailure;

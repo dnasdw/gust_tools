@@ -21,13 +21,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "utf8.h"
 #include "util.h"
 
 bool create_path(char* path)
 {
     bool result = true;
-    struct stat st;
-    if (stat(path, &st) != 0) {
+    struct stat64 st;
+    if (stat64_utf8(path, &st) != 0) {
         // Directory doesn't exist, create it
         size_t pos = 0;
         for (size_t n = strlen(path); n > 0; n--) {
@@ -62,14 +63,14 @@ bool create_path(char* path)
 
 bool is_file(const char* path)
 {
-    struct stat st;
-    return (stat(path, &st) == 0) && S_ISREG(st.st_mode);
+    struct stat64 st;
+    return (stat64_utf8(path, &st) == 0) && S_ISREG(st.st_mode);
 }
 
 bool is_directory(const char* path)
 {
-    struct stat st;
-    return (stat(path, &st) == 0) && S_ISDIR(st.st_mode);
+    struct stat64 st;
+    return (stat64_utf8(path, &st) == 0) && S_ISDIR(st.st_mode);
 }
 
 char* change_extension(const char* path, const char* extension)
@@ -86,7 +87,7 @@ char* change_extension(const char* path, const char* extension)
 
 uint32_t read_file(const char* path, uint8_t** buf)
 {
-    FILE* file = fopen(path, "rb");
+    FILE* file = fopen_utf8(path, "rb");
     if (file == NULL) {
         fprintf(stderr, "ERROR: Can't open file '%s'\n", path);
         return 0;
@@ -116,14 +117,14 @@ out:
 
 void create_backup(const char* path)
 {
-    struct stat st;
-    if (stat(path, &st) == 0) {
+    struct stat64 st;
+    if (stat64_utf8(path, &st) == 0) {
         char* backup_path = malloc(strlen(path) + 5);
         if (backup_path == NULL)
             return;
         strcpy(backup_path, path);
         strcat(backup_path, ".bak");
-        if (stat(backup_path, &st) != 0) {
+        if (stat64_utf8(backup_path, &st) != 0) {
             if (rename(path, backup_path) == 0)
                 printf("Saved backup as '%s'\n", backup_path);
             else
@@ -137,7 +138,7 @@ bool write_file(const uint8_t* buf, const uint32_t size, const char* path, const
 {
     if (backup)
         create_backup(path);
-    FILE* file = fopen(path, "wb");
+    FILE* file = fopen_utf8(path, "wb");
     if (file == NULL) {
         fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
         return false;
