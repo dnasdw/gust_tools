@@ -1,6 +1,6 @@
 /*
   DDS definitions
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -60,6 +60,7 @@
 
 enum DDS_FORMAT {
     DDS_FORMAT_UNKNOWN,
+    DDS_FORMAT_BGR,
     DDS_FORMAT_ABGR,
     DDS_FORMAT_ARGB,
     DDS_FORMAT_GRAB,

@@ -1,6 +1,6 @@
 /*
   gust_g1t - DDS texture unpacker for Gust (Koei/Tecmo) .g1t files
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -59,7 +59,33 @@ typedef struct {
 
 #pragma pack(pop)
 
-static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t height, uint32_t mipmaps)
+typedef struct {
+    const char* in;
+    const char* out;
+} swizzle_t;
+
+swizzle_t swizzle_op[] = {
+    { NULL, NULL },
+    { "ARGB", "ABGR" },
+    { "ARGB", "RGBA" },
+    { "ARGB", "GRAB" },
+};
+
+const char* transform_op[] = {
+    NULL,
+    "02413",
+};
+
+#define NO_SWIZZLE      0
+#define ARGB_TO_ABGR    1
+#define ARGB_TO_RGBA    2
+#define ARGB_TO_GRAB    3
+#define NO_TRANSFORM    0
+#define TRANSFORM_N     1
+#define NO_TILING       0
+
+static size_t write_dds_header(FILE* fd, int format, uint32_t width,
+                               uint32_t height, uint32_t mipmaps)
 {
     if ((fd == NULL) || (width == 0) || (height == 0))
         return 0;
@@ -70,7 +96,13 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
     header.height = height;
     header.width = width;
     header.ddspf.size = 32;
-    if (format >= DDS_FORMAT_ABGR && format <= DDS_FORMAT_RGBA) {
+    if (format == DDS_FORMAT_BGR) {
+        header.ddspf.flags = DDS_RGB;
+        header.ddspf.RGBBitCount = 24;
+        header.ddspf.RBitMask = 0x00ff0000;
+        header.ddspf.GBitMask = 0x0000ff00;
+        header.ddspf.BBitMask = 0x000000ff;
+    } else if (format >= DDS_FORMAT_ABGR && format <= DDS_FORMAT_RGBA) {
         header.ddspf.flags = DDS_RGBA;
         header.ddspf.RGBBitCount = 32;
         // Always save as ARGB, to keep VS and PhotoShop happy
@@ -101,39 +133,55 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width, uint32_t he
     return r;
 }
 
-static void swizzle(const char* in, const char* out, uint8_t* buf, const uint32_t size)
+static void swizzle(const uint32_t bits_per_pixel, const char* in,
+                    const char* out, uint8_t* buf, const uint32_t size)
 {
+    assert(bits_per_pixel % 8 == 0);
+
     const int rgba[4] = { 'R', 'G', 'B', 'A' };
     if (strcmp(in, out) == 0)
         return;
 
-    assert(size % 4 == 0);
     uint32_t mask[4];
     int rot[4];
     for (uint32_t i = 0; i < 4; i++) {
         uint32_t pos_in = 3 - (uint32_t)((uintptr_t)strchr(in, rgba[i]) - (uintptr_t)in);
         uint32_t pos_out = 3 - (uint32_t)((uintptr_t)strchr(out, rgba[i]) - (uintptr_t)out);
-        mask[i] = 0x000000ff << (pos_in * 8);
+        mask[i] = ((1 << bits_per_pixel / 4) - 1) << (pos_in * 8);
         rot[i] = (pos_out - pos_in) * 8;
     }
 
     for (uint32_t j = 0; j < size; j += 4) {
-        uint32_t s = getbe32(&buf[j]);
+        uint32_t s;
+        switch (bits_per_pixel) {
+        case 16: s = getbe16(&buf[j]); break;
+        case 24: s = getbe24(&buf[j]); break;
+        default: s = getbe32(&buf[j]); break;
+        }
         uint32_t d = 0;
         for (uint32_t i = 0; i < 4; i++)
             d |= (rot[i] > 0) ? ((s & mask[i]) << rot[i]) : ((s & mask[i]) >> -rot[i]);
-        setbe32(&buf[j], d);
+        switch (bits_per_pixel) {
+        case 16: setbe16(&buf[j], (uint16_t)d); break;
+        case 24: setbe24(&buf[j], d); break;
+        default: setbe32(&buf[j], d); break;
+        }
     }
 }
 
-// Bit-driven permutation of 32-bit words data sets.
 // This function permutes the words of all positions x in a dataset with the
 // word from position t(x), where t(x) is x with bits reorganized according to
 // 'bit_order'.
 // For instance if you have the set of words [ABCDEFGH ABCDEFGH ...] in buf and
 // feed bit_order "210", you get the new set [AECGBFDH AECGBFDH ...]
-static void transform32(const char* bit_order, uint8_t* buf, const uint32_t size)
+static void transform(const uint32_t bits_per_pixel, const char* bit_order,
+                      uint8_t* buf, const uint32_t size)
 {
+    assert(bits_per_pixel % 8 == 0);
+    const uint32_t bytes_per_pixel = bits_per_pixel / 8;
+    assert((bytes_per_pixel >= 2) && (bytes_per_pixel <= 4));
+    assert(size % bytes_per_pixel == 0);
+
     const char* bit_pos = "0123456789abcdef";
     uint32_t bit_size = (uint32_t)strlen(bit_order);
 
@@ -146,8 +194,8 @@ static void transform32(const char* bit_order, uint8_t* buf, const uint32_t size
         rot[i] = (int32_t)((uintptr_t)strchr(bit_order, bit_pos[i]) - (uintptr_t)bit_order) - i;
     }
 
-    uint32_t* tmp_buf = (uint32_t*)malloc(size);
-    for (uint32_t i = 0; i < size / sizeof(uint32_t); i++) {
+    uint8_t* tmp_buf = (uint8_t*)malloc(size);
+    for (uint32_t i = 0; i < (size / bytes_per_pixel); i++) {
         uint32_t mask = 1;
         uint32_t src_index = 0;
         for (uint32_t j = 0; j < bit_size; j++) {
@@ -155,25 +203,35 @@ static void transform32(const char* bit_order, uint8_t* buf, const uint32_t size
             mask <<= 1;
         }
         src_index += (i >> bit_size) << bit_size;
-        tmp_buf[i] = ((uint32_t*)buf)[src_index];
+        switch (bits_per_pixel) {
+        case 16: setle16(&tmp_buf[bytes_per_pixel * i], getle16(&buf[src_index * bytes_per_pixel])); break;
+        case 24: setle24(&tmp_buf[bytes_per_pixel * i], getle24(&buf[src_index * bytes_per_pixel])); break;
+        default: setle32(&tmp_buf[bytes_per_pixel * i], getle32(&buf[src_index * bytes_per_pixel])); break;
+        }
     }
     memcpy(buf, tmp_buf, size);
     free(tmp_buf);
 }
 
-static void tile(uint32_t tile_size, uint32_t width, uint8_t* buf, const uint32_t size)
+static void tile(const uint32_t bits_per_pixel, uint32_t tile_size, uint32_t width,
+                 uint8_t* buf, const uint32_t size)
 {
-    uint32_t* tmp_buf = (uint32_t*)malloc(size);
-
+    assert(bits_per_pixel % 8 == 0);
+    const uint32_t bytes_per_pixel = bits_per_pixel / 8;
+    assert((bytes_per_pixel >= 2) && (bytes_per_pixel <= 4));
+    assert(size % bytes_per_pixel == 0);
     assert (size % (tile_size * tile_size) == 0);
 
-    for (uint32_t i = 0; i < size / sizeof(uint32_t) / tile_size / tile_size; i++) {
+    uint8_t* tmp_buf = (uint8_t*)malloc(size);
+
+    for (uint32_t i = 0; i < size / bytes_per_pixel / tile_size / tile_size; i++) {
         uint32_t tile_row = i / (width / tile_size);
         uint32_t tile_column = i % (width / tile_size);
         uint32_t tile_start = tile_row * width * tile_size + tile_column * tile_size;
         for (uint32_t j = 0; j < tile_size; j++) {
-            memcpy(&tmp_buf[i * tile_size * tile_size + j * tile_size], &((uint32_t*)buf)[tile_start + j * width],
-                tile_size * sizeof(uint32_t));
+            memcpy(&tmp_buf[bytes_per_pixel * (i * tile_size * tile_size + j * tile_size)],
+                &buf[bytes_per_pixel * (tile_start + j * width)],
+                (size_t)tile_size * bytes_per_pixel);
         }
     }
 
@@ -181,22 +239,44 @@ static void tile(uint32_t tile_size, uint32_t width, uint8_t* buf, const uint32_
     free(tmp_buf);
 }
 
-static void untile(uint32_t tile_size, uint32_t width, uint8_t* buf, const uint32_t size)
+static void untile(const uint32_t bits_per_pixel, uint32_t tile_size, uint32_t width,
+                   uint8_t* buf, const uint32_t size)
 {
-    uint32_t* tmp_buf = (uint32_t*)malloc(size);
-
+    assert(bits_per_pixel % 8 == 0);
+    const uint32_t bytes_per_pixel = bits_per_pixel / 8;
+    assert((bytes_per_pixel >= 2) && (bytes_per_pixel <= 4));
+    assert(size % bytes_per_pixel == 0);
     assert(size % (tile_size * tile_size) == 0);
     assert(width % tile_size == 0);
 
-    for (uint32_t i = 0; i < size / sizeof(uint32_t) / tile_size / tile_size; i++) {
+    uint8_t* tmp_buf = (uint8_t*)malloc(size);
+
+    for (uint32_t i = 0; i < size / bytes_per_pixel / tile_size / tile_size; i++) {
         uint32_t tile_row = i / (width / tile_size);
         uint32_t tile_column = i % (width / tile_size);
         uint32_t tile_start = tile_row * width * tile_size + tile_column * tile_size;
         for (uint32_t j = 0; j < tile_size; j++) {
-            memcpy(&tmp_buf[tile_start + j * width], &((uint32_t*)buf)[i * tile_size * tile_size + j * tile_size],
-                tile_size * sizeof(uint32_t));
+            memcpy(&tmp_buf[bytes_per_pixel * (tile_start + j * width)],
+                &buf[bytes_per_pixel * (i * tile_size * tile_size + j * tile_size)],
+                (size_t)tile_size * bytes_per_pixel);
         }
     }
+
+    memcpy(buf, tmp_buf, size);
+    free(tmp_buf);
+}
+
+static void flip(uint32_t bits_per_pixel, uint8_t* buf, const uint32_t size, uint32_t width)
+{
+    assert(bits_per_pixel % 8 == 0);
+    const uint32_t line_size = width * (bits_per_pixel / 8);
+    assert(size % line_size == 0);
+    const uint32_t max_line = (size / line_size) - 1;
+
+    uint8_t* tmp_buf = (uint8_t*)malloc(size);
+
+    for (uint32_t i = 0; i <= max_line; i++)
+        memcpy(&tmp_buf[i * line_size], &buf[(max_line - i) * line_size], line_size);
 
     memcpy(buf, tmp_buf, size);
     free(tmp_buf);
@@ -212,10 +292,11 @@ int main_utf8(int argc, char** argv)
     char path[256];
     JSON_Value* json = NULL;
     bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
+    bool flip_image = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'f');
 
-    if ((argc != 2) && !list_only) {
+    if ((argc != 2) && !list_only && !flip_image) {
         printf("%s %s (c) 2019 VitaSmith\n\n"
-            "Usage: %s [-l] <file or directory>\n\n"
+            "Usage: %s [-l] [-f] <file or directory>\n\n"
             "Extracts (file) or recreates (directory) a Gust .g1t texture archive.\n\n"
             "Note: A backup (.bak) of the original is automatically created, when the target\n"
             "is being overwritten for the first time.\n",
@@ -248,6 +329,8 @@ int main_utf8(int argc, char** argv)
         const char* version = json_object_get_string(json_object(json), "version");
         if ((filename == NULL) || (version == NULL))
             goto out;
+        if (!flip_image)
+            flip_image = json_object_get_boolean(json_object(json), "flip");
         printf("Creating '%s'...\n", filename);
         create_backup(filename);
         file = fopen_utf8(filename, "wb+");
@@ -361,34 +444,56 @@ int main_utf8(int argc, char** argv)
                     }
                 }
             }
-            // Convert ARGB back to RGBA or ABGR
-            if ((tex.type == 0x00) || (tex.type == 0x01) || (tex.type == 0x09) || (tex.type == 0x21)) {
-                if (dds_size % sizeof(uint32_t) != 0) {
-                    fprintf(stderr, "ERROR: ARGB texture size should be a multiple of 32 bits\n");
-                    goto out;
-                }
-                if ((dds_header->ddspf.flags != DDS_RGBA) || (dds_header->ddspf.RGBBitCount != 32) ||
-                    (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
-                    (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0xff000000)) {
-                    fprintf(stderr, "ERROR: '%s' is not an ARGB texture we support\n", path);
-                    goto out;
-                }
-                switch (tex.type) {
-                case 0x00:
-                    swizzle("ARGB", "ABGR", (uint8_t*)&dds_header[1], dds_size);
-                    break;
-                case 0x01:
-                    swizzle("ARGB", "RGBA", (uint8_t*)&dds_header[1], dds_size);
-                    break;
-                case 0x09:
-                    swizzle("ARGB", "GRAB", (uint8_t*)&dds_header[1], dds_size);
-                    tile(8, dds_header->width, (uint8_t*)&dds_header[1], dds_size);
-                    transform32("02413", (uint8_t*)&dds_header[1], dds_size);
-                    break;
-                default:
-                    break;
-                }
+            uint32_t bits_per_pixel = 0, sw = NO_SWIZZLE, tl = NO_TILING, tr = NO_TRANSFORM;
+            switch (tex.type) {
+            case 0x00: bits_per_pixel = 32; sw = ARGB_TO_ABGR; break;
+            case 0x01: bits_per_pixel = 32; sw = ARGB_TO_ABGR; break;
+            case 0x06: bits_per_pixel = 4; break;
+            case 0x07: bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x08: bits_per_pixel = 8; break;
+            case 0x09: bits_per_pixel = 32; sw = ARGB_TO_GRAB; tl = 8; tr = TRANSFORM_N; break;
+            case 0x10: bits_per_pixel = 4; break; // UNTESTED!!
+            case 0x12: bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x21: bits_per_pixel = 32; break;
+            case 0x45: bits_per_pixel = 24; tl = 8; tr = TRANSFORM_N; break; // Nintendo DS RGB
+            case 0x59: bits_per_pixel = 4; break;
+            case 0x5B: bits_per_pixel = 8; break;
+            case 0x5F: bits_per_pixel = 8; break;
+            case 0x60: bits_per_pixel = 4; break; // UNTESTED!!
+            case 0x62: bits_per_pixel = 8; break; // UNTESTED!!
+            default:
+                fprintf(stderr, "ERROR: Unsupported texture type 0x%02x\n", tex.type);
+                goto out;
             }
+
+            if (dds_size % (bits_per_pixel / 8) != 0) {
+                fprintf(stderr, "ERROR: Texture size should be a multiple of %d bits\n", bits_per_pixel);
+                goto out;
+            }
+
+            if ((dds_header->ddspf.flags != DDS_RGBA) || (dds_header->ddspf.RGBBitCount != 32) ||
+                (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
+                (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0xff000000)) {
+                fprintf(stderr, "ERROR: '%s' is not an ARGB texture we support\n", path);
+                goto out;
+            }
+
+            if ((dds_header->ddspf.flags != DDS_RGB) || (dds_header->ddspf.RGBBitCount != 32) ||
+                (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
+                (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0x00000000)) {
+                fprintf(stderr, "ERROR: '%s' is not an RGB texture we support\n", path);
+                goto out;
+            }
+
+            if (flip_image)
+                flip(bits_per_pixel, (uint8_t*)&dds_header[1], dds_size, dds_header->width);
+            if (sw != NO_SWIZZLE)
+                swizzle(bits_per_pixel, swizzle_op[sw].in, swizzle_op[sw].out, (uint8_t*)&dds_header[1], dds_size);
+            if (tl != NO_TILING)
+                tile(bits_per_pixel, tl, dds_header->width, (uint8_t*)&dds_header[1], dds_size);
+            if (tr != NO_TRANSFORM)
+                transform(bits_per_pixel, transform_op[tr], (uint8_t*)&dds_header[1], dds_size);
+
             // Write texture
             if (fwrite(&dds_header[1], 1, dds_size, file) != dds_size) {
                 fprintf(stderr, "ERROR: Can't write texture data\n");
@@ -475,6 +580,7 @@ int main_utf8(int argc, char** argv)
         json_object_set_number(json_object(json), "nb_textures", hdr->nb_textures);
         json_object_set_number(json_object(json), "flags", hdr->flags);
         json_object_set_number(json_object(json), "extra_size", hdr->extra_size);
+        json_object_set_boolean(json_object(json), "flip", flip_image);
 
         g1t_pos[0] = 0;
         if (!list_only && !create_path(argv[argc - 1]))
@@ -483,7 +589,7 @@ int main_utf8(int argc, char** argv)
         JSON_Value* json_flags_array = json_value_init_array();
         JSON_Value* json_textures_array = json_value_init_array();
 
-        printf("OFFSET   SIZE     NAME");
+        printf("TYPE OFFSET     SIZE       NAME");
         for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS\n");
@@ -521,6 +627,7 @@ int main_utf8(int argc, char** argv)
             case 0x10: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break; // UNTESTED!!
             case 0x12: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break; // UNTESTED!!
             case 0x21: texture_format = DDS_FORMAT_ARGB; bits_per_pixel = 32; break;
+            case 0x45: texture_format = DDS_FORMAT_BGR; bits_per_pixel = 24; break;  // Nintendo DS RGB (flipped)
             case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
             case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
 //            case 0x5C: texture_format = DDS_FORMAT_ATI1; bits_per_pixel = ?; break;
@@ -537,12 +644,18 @@ int main_utf8(int argc, char** argv)
             uint32_t texture_size = highest_mipmap_size;
             for (int j = 0; j < tex->mipmaps - 1; j++)
                 texture_size += highest_mipmap_size / (4 << (j * 2));
+            uint32_t expected_size = ((i + 1 == hdr->nb_textures) ? g1t_size :
+                x_offset_table[i + 1]) - x_offset_table[i];
+            assert(expected_size >= texture_size + (uint32_t)sizeof(g1t_tex_header));
+            if (texture_size + (uint32_t)sizeof(g1t_tex_header) > expected_size) {
+                fprintf(stderr, "ERROR: Computed texture size is larger than actual size\n");
+                continue;
+            }
             snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[argc - 1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
-            printf("%08x %08x %s %-10s %d\n", hdr->header_size + x_offset_table[i],
-                ((i + 1 == hdr->nb_textures) ? g1t_size : x_offset_table[i + 1]) - x_offset_table[i],
-                path, dims, tex->mipmaps);
+            printf("0x%02x 0x%08x 0x%08x %s %-10s %d\n", tex->type, hdr->header_size + x_offset_table[i],
+                expected_size, path, dims, tex->mipmaps);
             if (list_only)
                 continue;
             FILE* dst = fopen_utf8(path, "wb");
@@ -580,26 +693,33 @@ int main_utf8(int argc, char** argv)
             // insist on using ARGB always...
             switch (texture_format) {
             case DDS_FORMAT_RGBA:
-                swizzle("RGBA", "ARGB", &buf[pos], texture_size);
+                swizzle(bits_per_pixel, "RGBA", "ARGB", &buf[pos], texture_size);
                 break;
             case DDS_FORMAT_ABGR:
-                swizzle("ABGR", "ARGB", &buf[pos], texture_size);
+                swizzle(bits_per_pixel, "ABGR", "ARGB", &buf[pos], texture_size);
                 break;
             case DDS_FORMAT_GRAB:
-                swizzle("GRAB", "ARGB", &buf[pos], texture_size);
+                swizzle(bits_per_pixel, "GRAB", "ARGB", &buf[pos], texture_size);
                 break;
             default:
                 break;
             }
             // Additional transformations
-            if (tex->type == 0x09) {
-                // This data format appears to be used for PS Vita image
+            switch (tex->type) {
+            case 0x09:
+            case 0x45:
+                // This data format appears to be used for portable console
                 // assets. Not only is it 8x8 tiled but it also requires
                 // 4x'И' transpositions within each tile, for groups of
                 // 2x2 pixels, which we enact through generic transform.
-                transform32("03142", &buf[pos], texture_size);
-                untile(8, width, &buf[pos], texture_size);
+                transform(bits_per_pixel, "03142", &buf[pos], texture_size);
+                untile(bits_per_pixel, 8, width, &buf[pos], texture_size);
+                break;
+            default:
+                break;
             }
+            if (flip_image)
+                flip(bits_per_pixel, &buf[pos], texture_size, width);
             if (fwrite(&buf[pos], texture_size, 1, dst) != 1) {
                 fprintf(stderr, "ERROR: Can't write DDS data\n");
                 fclose(dst);

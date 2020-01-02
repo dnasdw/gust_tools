@@ -1,6 +1,6 @@
 /*
   Common code for Gust (Koei/Tecmo) PC games tools
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -136,6 +136,34 @@ static __inline uint16_t getbe16(const void* p)
 static __inline void setbe16(const void* p, const uint16_t v)
 {
     setle16(p, bswap_uint16(v));
+}
+
+static __inline uint32_t getle24(const void* _p)
+{
+    uint8_t* p = (uint8_t*)_p;
+    return p[0] | (p[1] << 8) | (p[2] << 16);
+}
+
+static __inline void setle24(const void* _p, const uint32_t v)
+{
+    uint8_t* p = (uint8_t*)_p;
+    p[0] = v & 0xff;
+    p[1] = (v >> 8) & 0xff;
+    p[2] = (v >> 16) & 0xff;
+}
+
+static __inline uint32_t getbe24(const void* _p)
+{
+    uint8_t* p = (uint8_t*)_p;
+    return (p[0] << 16) | (p[1] << 8) | p[2];
+}
+
+static __inline void setbe24(const void* _p, const uint32_t v)
+{
+    uint8_t* p = (uint8_t*)_p;
+    p[0] = (v >> 16) & 0xff;
+    p[1] = (v >> 8) & 0xff;
+    p[2] = v & 0xff;
 }
 
 static __inline uint32_t getle32(const void* p)
