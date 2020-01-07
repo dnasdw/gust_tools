@@ -380,7 +380,7 @@ int main_utf8(int argc, char** argv)
         printf("OFFSET   SIZE     NAME");
         for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
-        printf("     DIMENSIONS MIPMAPS\n");
+        printf("     DIMENSIONS MIPMAPS SUPPORTED?\n");
         for (uint32_t i = 0; i < hdr.nb_textures; i++) {
             offset_table[i] = ftell(file) - hdr.header_size;
             JSON_Object* texture_entry = json_array_get_object(textures_array, i);
@@ -445,43 +445,55 @@ int main_utf8(int argc, char** argv)
                 }
             }
             uint32_t bits_per_pixel = 0, sw = NO_SWIZZLE, tl = NO_TILING, tr = NO_TRANSFORM;
+            bool supported = true;
             switch (tex.type) {
             case 0x00: bits_per_pixel = 32; sw = ARGB_TO_ABGR; break;
             case 0x01: bits_per_pixel = 32; sw = ARGB_TO_ABGR; break;
             case 0x06: bits_per_pixel = 4; break;
-            case 0x07: bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x07: bits_per_pixel = 8; supported = false; break;    // UNSUPPORTED!!
             case 0x08: bits_per_pixel = 8; break;
             case 0x09: bits_per_pixel = 32; sw = ARGB_TO_GRAB; tl = 8; tr = TRANSFORM_N; break;
-            case 0x10: bits_per_pixel = 4; break; // UNTESTED!!
-            case 0x12: bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x10: bits_per_pixel = 4; supported = false; break;    // UNSUPPORTED!!
+            case 0x12: bits_per_pixel = 8; supported = false; break;    // UNSUPPORTED!!
             case 0x21: bits_per_pixel = 32; break;
-            case 0x45: bits_per_pixel = 24; tl = 8; tr = TRANSFORM_N; break; // Nintendo DS RGB
+            case 0x3C: bits_per_pixel = 16; supported = false; break;   // UNSUPPORTED!!
+            case 0x3D: bits_per_pixel = 16; supported = false; break;   // UNSUPPORTED!!
+            case 0x45: bits_per_pixel = 24; tl = 8; tr = TRANSFORM_N; break;
             case 0x59: bits_per_pixel = 4; break;
             case 0x5B: bits_per_pixel = 8; break;
             case 0x5F: bits_per_pixel = 8; break;
-            case 0x60: bits_per_pixel = 4; break; // UNTESTED!!
-            case 0x62: bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x60: bits_per_pixel = 4; supported = false; break;    // UNSUPPORTED!!
+            case 0x62: bits_per_pixel = 8; supported = false; break;    // UNSUPPORTED!!
             default:
-                fprintf(stderr, "ERROR: Unsupported texture type 0x%02x\n", tex.type);
+                fprintf(stderr, "ERROR: Unhandled texture type 0x%02x\n", tex.type);
                 goto out;
             }
 
-            if (dds_size % (bits_per_pixel / 8) != 0) {
+            if ((dds_size * 8) % bits_per_pixel != 0) {
                 fprintf(stderr, "ERROR: Texture size should be a multiple of %d bits\n", bits_per_pixel);
                 goto out;
             }
 
-            if ((dds_header->ddspf.flags != DDS_RGBA) || (dds_header->ddspf.RGBBitCount != 32) ||
-                (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
-                (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0xff000000)) {
-                fprintf(stderr, "ERROR: '%s' is not an ARGB texture we support\n", path);
-                goto out;
-            }
-
-            if ((dds_header->ddspf.flags != DDS_RGB) || (dds_header->ddspf.RGBBitCount != 32) ||
-                (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
-                (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0x00000000)) {
-                fprintf(stderr, "ERROR: '%s' is not an RGB texture we support\n", path);
+            switch (dds_header->ddspf.flags) {
+            case DDS_RGBA:
+                if ((dds_header->ddspf.RGBBitCount != 32) ||
+                    (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
+                    (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0xff000000)) {
+                    fprintf(stderr, "ERROR: '%s' is not an ARGB texture we support\n", path);
+                    goto out;
+                }
+                break;
+            case DDS_RGB:
+                if ((dds_header->ddspf.RGBBitCount != 24) ||
+                    (dds_header->ddspf.RBitMask != 0x00ff0000) || (dds_header->ddspf.GBitMask != 0x0000ff00) ||
+                    (dds_header->ddspf.BBitMask != 0x000000ff) || (dds_header->ddspf.ABitMask != 0x00000000)) {
+                    fprintf(stderr, "ERROR: '%s' is not an RGB texture we support\n", path);
+                    goto out;
+                }
+            case DDS_FOURCC:
+                break;
+            default:
+                fprintf(stderr, "ERROR: '%s' is not a texture we support\n", path);
                 goto out;
             }
 
@@ -501,9 +513,9 @@ int main_utf8(int argc, char** argv)
             }
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", dds_header->width, dds_header->height);
-            printf("%08x %08x %s %-10s %d\n", hdr.header_size + offset_table[i],
+            printf("%08x %08x %s %-10s %-7d %s\n", hdr.header_size + offset_table[i],
                 (uint32_t)ftell(file) - offset_table[i] - hdr.header_size, path,
-                dims, dds_header->mipMapCount);
+                dims, dds_header->mipMapCount, supported ? "YES" : "*NO*");
             free(buf);
             buf = NULL;
         }
@@ -592,7 +604,7 @@ int main_utf8(int argc, char** argv)
         printf("TYPE OFFSET     SIZE       NAME");
         for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
-        printf("     DIMENSIONS MIPMAPS\n");
+        printf("     DIMENSIONS MIPMAPS SUPPORTED?\n");
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
             // There's an array of flags after the hdr
             json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
@@ -616,26 +628,29 @@ int main_utf8(int argc, char** argv)
             json_object_set_number(json_object(json_texture), "type", tex->type);
             json_object_set_number(json_object(json_texture), "flags", tex->flags);
             uint32_t texture_format, bits_per_pixel;
+            bool supported = true;
             switch (tex->type) {
             case 0x00: texture_format = DDS_FORMAT_ABGR; bits_per_pixel = 32; break;
             // Note: Type 0x01 may also be DDS_FORMAT_ARGB for PS Vita images
             case 0x01: texture_format = DDS_FORMAT_RGBA; bits_per_pixel = 32; break;
             case 0x06: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
-            case 0x07: texture_format = DDS_FORMAT_DXT3; bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x07: texture_format = DDS_FORMAT_DXT3; bits_per_pixel = 8; supported = false; break;  // UNSUPPORTED!!
             case 0x08: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
             case 0x09: texture_format = DDS_FORMAT_GRAB; bits_per_pixel = 32; break;
-            case 0x10: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break; // UNTESTED!!
-            case 0x12: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x10: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; supported = false; break;  // UNSUPPORTED!!
+            case 0x12: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; supported = false; break;  // UNSUPPORTED!!
             case 0x21: texture_format = DDS_FORMAT_ARGB; bits_per_pixel = 32; break;
-            case 0x45: texture_format = DDS_FORMAT_BGR; bits_per_pixel = 24; break;  // Nintendo DS RGB (flipped)
+            case 0x3C: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 16; supported = false; break; // UNSUPPORTED!!
+            case 0x3D: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 16; supported = false; break; // UNSUPPORTED!!
+            case 0x45: texture_format = DDS_FORMAT_BGR; bits_per_pixel = 24; break;
             case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
             case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
 //            case 0x5C: texture_format = DDS_FORMAT_ATI1; bits_per_pixel = ?; break;
 //            case 0x5D: texture_format = DDS_FORMAT_ATI2; bits_per_pixel = ?; break;
 //            case 0x5E: texture_format = DDS_FORMAT_BC6; bits_per_pixel = ?; break;
             case 0x5F: texture_format = DDS_FORMAT_BC7; bits_per_pixel = 8; break;
-            case 0x60: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break; // UNTESTED!!
-            case 0x62: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break; // UNTESTED!!
+            case 0x60: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; supported = false; break;  // UNSUPPORTED!!
+            case 0x62: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; supported = false; break;  // UNSUPPORTED!!
             default:
                 fprintf(stderr, "ERROR: Unsupported texture type (0x%02X)\n", tex->type);
                 continue;
@@ -654,8 +669,8 @@ int main_utf8(int argc, char** argv)
             snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[argc - 1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
-            printf("0x%02x 0x%08x 0x%08x %s %-10s %d\n", tex->type, hdr->header_size + x_offset_table[i],
-                expected_size, path, dims, tex->mipmaps);
+            printf("0x%02x 0x%08x 0x%08x %s %-10s %-7d %s\n", tex->type, hdr->header_size + x_offset_table[i],
+                expected_size, path, dims, tex->mipmaps, supported ? "YES" : "*NO*");
             if (list_only)
                 continue;
             FILE* dst = fopen_utf8(path, "wb");
