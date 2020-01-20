@@ -112,7 +112,12 @@ static __inline uint32_t find_msb(uint32_t v)
 static __inline uint32_t popcount(uint32_t v)
 {
 #if defined (_MSC_VER)
-    return __popcnt(v);
+    // The built in __popcnt() used by Microsoft may require SSE4.2
+    // which not all machines have => use our own (GitHub issue #8).
+    v -= (v >> 1) & 0x55555555;
+    v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
+    v = (v + (v >> 4)) & 0x0f0f0f0f;
+    return (v * 0x01010101) >> 24;
 #else
     return __builtin_popcount(v);
 #endif
