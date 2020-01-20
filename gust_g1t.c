@@ -377,7 +377,7 @@ int main_utf8(int argc, char** argv)
             goto out;
         }
 
-        printf("OFFSET   SIZE     NAME");
+        printf("TYPE OFFSET     SIZE       NAME");
         for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS SUPPORTED?\n");
@@ -513,9 +513,9 @@ int main_utf8(int argc, char** argv)
             }
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", dds_header->width, dds_header->height);
-            printf("%08x %08x %s %-10s %-7d %s\n", hdr.header_size + offset_table[i],
+            printf("0x%02x 0x%08x 0x%08x %s %-10s %-7d %s\n", tex.type, hdr.header_size + offset_table[i],
                 (uint32_t)ftell(file) - offset_table[i] - hdr.header_size, path,
-                dims, dds_header->mipMapCount, supported ? "YES" : "*NO*");
+                dims, dds_header->mipMapCount, supported ? "Y" : "N");
             free(buf);
             buf = NULL;
         }
@@ -670,7 +670,7 @@ int main_utf8(int argc, char** argv)
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
             printf("0x%02x 0x%08x 0x%08x %s %-10s %-7d %s\n", tex->type, hdr->header_size + x_offset_table[i],
-                expected_size, path, dims, tex->mipmaps, supported ? "YES" : "*NO*");
+                expected_size, path, dims, tex->mipmaps, supported ? "Y" : "N");
             if (list_only)
                 continue;
             FILE* dst = fopen_utf8(path, "wb");
