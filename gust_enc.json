@@ -1,15 +1,17 @@
 {
-    "version": 0x100,
-    /* Change this to the id of the game you wish to descramble (using one of the ids below) */
+    "version": 0x200,
+    /* Change to false if you don't want to spend time validating that the numbers below are prime */
+    "validate_primes": true,
+    /* Change to the id of the game you wish to descramble (using one of the ids below) */
     "seeds_id": "A17",
     /* Seeds used by a game executable can be found in its IDA Freeware disassembly:
      * 1. Locate the function call that uses literal value 3B9A73C9h (SEED_CONSTANT).
      * 2. At the beginning of that function you get length[] and table[] array values (lengths are usually 1Dh, 13h, 0Bh).
      * 3. Find the first call to a function that uses parameters 800h and 100h and look for another literal. That's main[0].
      * 4. Find the next literal being used after this call. That's main[1].
-     * 5. Go further down and look for 2 literals, one of which is half the value of the first. That's fence.
+     * 5. Go further down and look for 2 literals, one of which is half the value of the first and is prime. That's fence.
      * 6. Finally look for a call near the end where 80h is used as parameter. The other literal there is main[2].
-     * Note: Except for fence, which is even, all of the seeds are 16-bit prime numbers.
+     * Note: All of the seeds are prime numbers so if you have a number that is not prime, then it's not a seed.
      * If needed, you can access deobfuscated binary code (to use with IDA) by saving the WinDbg dump.
      */
     "seeds": [
@@ -31,7 +33,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x1532
+            "fence": 0x0a99
         },
         {
             "id": "A18",
@@ -51,7 +53,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x15da
+            "fence": 0x0aed
         },
         {
             "id": "A19",
@@ -71,7 +73,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x156a
+            "fence": 0x0ab5
         },
         {
             "id": "A20",
@@ -91,7 +93,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x156a
+            "fence": 0x0ab5
         },
         {
             "id": "A21",
@@ -111,7 +113,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x1462
+            "fence": 0x0a31
         },
         {
             "id": "ANW",
@@ -131,7 +133,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x156a
+            "fence": 0x0ab5
         },
         {
             "id": "NOA",
@@ -151,7 +153,7 @@
                 0x1d,
                 0x17
             ],
-            "fence": 0x1352
+            "fence": 0x09a9
         },
         {
             "id": "BR",
@@ -171,7 +173,7 @@
                 0x13,
                 0x0b
             ],
-            "fence": 0x1646
+            "fence": 0x0b23
         }
    ]
 }

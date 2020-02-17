@@ -1,6 +1,7 @@
 /*
   gust_enc - Encoder/Decoder for Gust (Koei/Tecmo) .e files
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 - VitaSmith
+  Prime number computation copyright © 2001-2003 - Stephane Carrez
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -65,6 +66,9 @@ typedef struct {
     uint32_t length[3];
     uint32_t fence;
 } seed_data;
+
+// Bitmap list prime numbers below a specific value
+uint8_t* prime_list = NULL;
 
 /*
  * Stupid sexy scramblers ("Feels like I'm reading nothing at all!")
@@ -155,15 +159,14 @@ static bool fenced_scrambler(uint8_t* buf, uint32_t buf_size, seed_data* seeds, 
         seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
         uint32_t x = (seed[1] >> 16) & 0x7fff;
         uint16_t w = getbe16(&buf[i]);
-        // I strongly suspect that the fence is derived from the other seeds
-        // but I haven't been able to figure the mathematical formula for that yet.
+        // The fence is a 12-bit prime number
         if (descramble) {
-            if (x % seeds->fence >= seeds->fence / 2)
+            if (x % (seeds->fence * 2) >= seeds->fence)
                 w ^= (uint16_t)x;
             w -= (uint16_t)x;
         } else {
             w += (uint16_t)x;
-            if (x % seeds->fence >= seeds->fence / 2)
+            if (x % (seeds->fence * 2) >= seeds->fence)
                 w ^= (uint16_t)x;
         }
         setbe16(&buf[i], w);
@@ -612,6 +615,105 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     return payload_size;
 }
 
+// Returns the truncated integer square root of y using the Babylonian
+// iterative approximation method, derived from Newton's method.
+// This public domain function was written by George Gesslein II.
+static inline uint32_t lsqrt(uint32_t y)
+{
+    uint32_t x_old, x_new, testy;
+    int i, nbits;
+
+    if (y == 0)
+        return 0;
+
+    // Select a good starting value using binary logarithms
+    nbits = sizeof(y) * 8;
+    for (i = 4, testy = 16; ; i += 2, testy <<= 2) {
+        if (i >= nbits || y <= testy) {
+            x_old = (1 << (i / 2));	/* x_old = sqrt(testy) */
+            break;
+        }
+    }
+    // x_old >= sqrt(y)
+    // Use the Babylonian method to arrive at the integer square root
+    for (;;) {
+        x_new = (y / x_old + x_old) / 2;
+        if (x_old <= x_new)
+            break;
+        x_old = x_new;
+    }
+    return x_old;
+}
+
+// Returns true if 'n' is a prime number recorded in the table
+static inline int is_prime (uint32_t n)
+{
+    uint16_t bit = (uint16_t)n & 0x07;
+    return prime_list[n >> 3] & (1 << bit);
+}
+
+// Record 'n' as a prime number in the table
+static inline void set_prime (uint32_t n)
+{
+    uint16_t bit = (uint16_t)n & 0x07;
+    prime_list[n >> 3] |= (1 << bit);
+}
+
+// Check whether 'n' is a prime number.
+static bool check_for_prime(uint32_t n)
+{
+    uint32_t i = 0;
+    uint8_t* p;
+    uint32_t last_value;
+    bool small_n = ((n & 0xffff0000) == 0);
+
+    // We can stop when we have checked all prime numbers below sqrt(n)
+    last_value = lsqrt(n);
+
+    // Scan the bitmap of prime numbers and divide 'n' by the corresponding
+    // prime to see if it's a multiple of it.
+    p = prime_list;
+    do {
+        uint8_t val = *p++;
+        if (val) {
+            uint16_t q = i;
+            for (uint16_t j = 1; val && j <= 0x80; j <<= 1, q++) {
+                if (val & j) {
+                    val &= ~j;
+                    // Use 16-bit division if 'n' is small enough.
+                    if (small_n) {
+                        uint16_t r = (uint16_t)n % (uint16_t)q;
+                        if (r == 0)
+                            return false;
+                    } else {
+                        uint32_t r = n % q;
+                        if (r == 0)
+                            return false;
+                    }
+                }
+            }
+        }
+        i += 8;
+    } while (i < last_value);
+    return true;
+}
+
+static void compute_prime_list(uint32_t max_value)
+{
+    bool verbose = false;
+    uint32_t i, cnt = 0;
+
+    prime_list = calloc(max_value / 8, 1);
+    for (i = 2; i < max_value; i++) {
+        if (check_for_prime(i)) {
+            set_prime(i);
+            cnt++;
+            if (verbose)
+                printf ("0x%08x\n", i);
+        }
+    }
+}
+
 int main_utf8(int argc, char** argv)
 {
     seed_data seeds;
@@ -621,7 +723,7 @@ int main_utf8(int argc, char** argv)
     int r = -1;
     const char* app_name = appname(argv[0]);
     if ((argc < 2) || ((argc == 3) && (*argv[1] != '-'))) {
-        printf("%s %s (c) 2019 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
+        printf("%s %s (c) 2019-2020 VitaSmith\n\nUsage: %s [-GAME_ID] <file>\n\n"
             "Encode or decode a Gust .e file.\n\n"
             "If GAME_ID is not provided, then the default game ID from '%s.json' is used.\n"
             "Note: A backup (.bak) of the original is automatically created, when the target\n"
@@ -658,13 +760,42 @@ int main_utf8(int argc, char** argv)
     else
         printf("\n");
 
+    uint32_t max_seed_value = 0;
     for (size_t i = 0; i < array_size(seeds.main); i++) {
         seeds.main[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "main"), i);
+        if (seeds.main[i] > max_seed_value)
+            max_seed_value = seeds.main[i];
         seeds.table[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "table"), i);
+        if (seeds.table[i] > max_seed_value)
+            max_seed_value = seeds.table[i];
         seeds.length[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "length"), i);
     }
     seeds.fence = (uint32_t)json_object_get_number(seeds_entry, "fence");
+    bool validate_primes = json_object_get_boolean(json_object(json), "validate_primes");
     json_value_free(json);
+
+    // Validate the primes. You can disable this check by setting validate_primes to false in JSON.
+    if (validate_primes) {
+        compute_prime_list(max_seed_value);
+        for (size_t i = 0; i < array_size(seeds.main); i++) {
+            if (!is_prime(seeds.main[i])) {
+                printf("ERROR: main[%d] (0x%04x) is not prime!\n", (uint32_t)i, seeds.main[i]);
+                goto out;
+            }
+            if (!is_prime(seeds.table[i])) {
+                printf("ERROR: table[%d] (0x%04x) is not prime!\n", (uint32_t)i, seeds.table[i]);
+                goto out;
+            }
+            if (!is_prime(seeds.length[i])) {
+                printf("ERROR: length[%d] (0x%02x) is not prime!\n", (uint32_t)i, seeds.length[i]);
+                goto out;
+            }
+            if (!is_prime(seeds.fence)) {
+                printf("ERROR: fence (0x%04x) is not prime!\n", seeds.fence);
+                goto out;
+            }
+        }
+    }
 
     // Read the source file
     src_size = read_file(argv[argc - 1], &src);
@@ -744,6 +875,7 @@ int main_utf8(int argc, char** argv)
     // even more interesting than playing your games! :)))
 
 out:
+    free(prime_list);
     free(dst);
     free(src);
 
