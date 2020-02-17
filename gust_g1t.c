@@ -406,7 +406,7 @@ int main_utf8(int argc, char** argv)
                 dds_size -= sizeof(DDS_HEADER_DXT10);
             tex.mipmaps = (uint8_t)dds_header->mipMapCount;
             // Are both width and height a power of two?
-            bool po2_sizes = (popcount(dds_header->width) == 1) && (popcount(dds_header->height) == 1);
+            bool po2_sizes = is_power_of_2(dds_header->width) && is_power_of_2(dds_header->height);
             if (po2_sizes) {
                 tex.dx = (uint8_t)find_msb(dds_header->width);
                 tex.dy = (uint8_t)find_msb(dds_header->height);
