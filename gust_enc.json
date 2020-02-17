@@ -6,6 +6,7 @@
     "seeds_id": "A17",
     /* Seeds used by a game executable can be found in its IDA Freeware disassembly:
      * 1. Locate the function call that uses literal value 3B9A73C9h (SEED_CONSTANT).
+     *    Note that there may be multiple similar function calls with different seeds, so make sure to pick the right one!
      * 2. At the beginning of that function you get length[] and table[] array values (lengths are usually 1Dh, 13h, 0Bh).
      * 3. Find the first call to a function that uses parameters 800h and 100h and look for another literal. That's main[0].
      * 4. Find the next literal being used after this call. That's main[1].
@@ -15,6 +16,26 @@
      * If needed, you can access deobfuscated binary code (to use with IDA) by saving the WinDbg dump.
      */
     "seeds": [
+        {
+            "id": "A16",
+            "name": "Atelier Shallie",
+            "main": [
+                0x6df7,
+                0xc953,
+                0x72ef
+            ],
+            "table": [
+                0xaa83,
+                0xac8b,
+                0x89cf
+            ],
+            "length": [
+                0x1d,
+                0x13,
+                0x0b
+            ],
+            "fence": 0x9fd
+        },
         {
             "id": "A17",
             "name": "Atelier Sophie",
