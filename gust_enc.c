@@ -700,16 +700,13 @@ static bool check_for_prime(uint32_t n)
 
 static void compute_prime_list(uint32_t max_value)
 {
-    bool verbose = false;
     uint32_t i, cnt = 0;
 
-    prime_list = calloc(max_value / 8, 1);
-    for (i = 2; i < max_value; i++) {
+    prime_list = calloc((max_value + 7) / 8, 1);
+    for (i = 2; i <= max_value; i++) {
         if (check_for_prime(i)) {
             set_prime(i);
             cnt++;
-            if (verbose)
-                printf ("0x%08x\n", i);
         }
     }
 }
