@@ -39,8 +39,8 @@ typedef struct {
     uint32_t    total_size;
     uint32_t    header_size;
     uint32_t    nb_textures;
-    uint32_t    flags;          // Usually 0xA
-    uint32_t    extra_size;     // Always 0
+    uint32_t    platform;       // 0x05 = Nintendo DS, 0x06 = PS Vita, 0x0A = PC, 0x10 = Nintendo Switch
+    uint32_t    extra_size;
 } g1t_header;
 
 // This is followed by uint32_t extra_flags[nb_textures]
@@ -128,6 +128,7 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width,
         header10.dxgiFormat = DXGI_FORMAT_BC7_UNORM;
         header10.resourceDimension = D3D10_RESOURCE_DIMENSION_TEXTURE2D;
         header10.miscFlags2 = DDS_ALPHA_MODE_STRAIGHT;
+        header10.arraySize = 1; // Must be set to 1 for 3D texture
         r = fwrite(&header10, sizeof(DDS_HEADER_DXT10), 1, fd);
     }
     return r;
@@ -343,7 +344,7 @@ int main_utf8(int argc, char** argv)
         hdr.version = getbe32(version);
         hdr.total_size = 0;  // To be rewritten when we're done
         hdr.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
-        hdr.flags = json_object_get_uint32(json_object(json), "flags");
+        hdr.platform = json_object_get_uint32(json_object(json), "platform");
         hdr.extra_size = json_object_get_uint32(json_object(json), "extra_size");
         hdr.header_size = sizeof(hdr) + hdr.nb_textures * sizeof(uint32_t);
         if (fwrite(&hdr, sizeof(hdr), 1, file) != 1) {
@@ -590,7 +591,7 @@ int main_utf8(int argc, char** argv)
         json_object_set_string(json_object(json), "name", basename(argv[argc - 1]));
         json_object_set_string(json_object(json), "version", version);
         json_object_set_number(json_object(json), "nb_textures", hdr->nb_textures);
-        json_object_set_number(json_object(json), "flags", hdr->flags);
+        json_object_set_number(json_object(json), "platform", hdr->platform);
         json_object_set_number(json_object(json), "extra_size", hdr->extra_size);
         json_object_set_boolean(json_object(json), "flip", flip_image);
 
