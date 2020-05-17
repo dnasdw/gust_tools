@@ -2,6 +2,7 @@
 
 [![Build status](https://img.shields.io/appveyor/ci/VitaSmith/gust-tools.svg?style=flat-square)](https://ci.appveyor.com/project/VitaSmith/gust-tools)
 [![Github stats](https://img.shields.io/github/downloads/VitaSmith/gust_tools/total.svg?style=flat-square)](https://github.com/VitaSmith/gust_tools/releases)
+[![Latest release](https://img.shields.io/github/release-pre/VitaSmith/gust_tools?style=flat-square)](https://github.com/VitaSmith/gust_tools/releases)
 
 A set of commandline utilities designed to work with Gust (Koei/Tecmo) PC game assets such as the ones from
 [_Atelier series_](https://store.steampowered.com/search/?sort_by=Name_ASC&term=atelier&tags=122&category1=998),
