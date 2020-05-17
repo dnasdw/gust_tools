@@ -570,7 +570,7 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     // Read the descrambled checksums footer (16 bytes)
     uint32_t* footer = (uint32_t*)&payload[payload_size - E_FOOTER_SIZE];
     payload_size -= E_FOOTER_SIZE;
-    if (footer[0] != 0) {
+    if ((footer[0] != 0) && (footer[0] != 0x000000ff)) {
         fprintf(stderr, "ERROR: unexpected footer value: 0x%08x\n", footer[0]);
         return 0;
     }
