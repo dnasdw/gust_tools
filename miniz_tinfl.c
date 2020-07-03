@@ -24,6 +24,10 @@
  *
  **************************************************************************/
 
+#if defined(_MSC_VER)
+#pragma warning(disable: 6319)
+#endif
+
 #include "miniz_tinfl.h"
 
 #ifdef __cplusplus

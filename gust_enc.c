@@ -676,7 +676,7 @@ static bool check_for_prime(uint32_t n)
     do {
         uint8_t val = *p++;
         if (val) {
-            uint16_t q = i;
+            uint16_t q = (uint16_t)i;
             for (uint16_t j = 1; val && j <= 0x80; j <<= 1, q++) {
                 if (val & j) {
                     val &= ~j;
