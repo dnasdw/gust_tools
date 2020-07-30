@@ -50,7 +50,7 @@ int main_utf8(int argc, char** argv)
     JSON_Value* json = NULL;
 
     if (argc != 2) {
-        printf("%s %s (c) 2019 VitaSmith\n\n"
+        printf("%s %s (c) 2019-2020 VitaSmith\n\n"
             "Usage: %s <file>\n\n"
             "Convert a .ebm file to or from an editable JSON file.\n\n",
             appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));

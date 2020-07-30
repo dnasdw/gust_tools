@@ -27,7 +27,7 @@
 #include "parson.h"
 #include "dds.h"
 
-#define G1TG_MAGIC              0x47315447  // "G1GT"
+#define GT1G_MAGIC              0x47315447  // "G1TG"
 #define G1T_TEX_EXTRA_FLAG      0x10000000
 #define JSON_VERSION            1
 #define json_object_get_uint32  (uint32_t)json_object_get_number
@@ -340,7 +340,7 @@ int main_utf8(int argc, char** argv)
             goto out;
         }
         g1t_header hdr = { 0 };
-        hdr.magic = G1TG_MAGIC;
+        hdr.magic = GT1G_MAGIC;
         hdr.version = getbe32(version);
         hdr.total_size = 0;  // To be rewritten when we're done
         hdr.nb_textures = json_object_get_uint32(json_object(json), "nb_textures");
@@ -536,12 +536,14 @@ int main_utf8(int argc, char** argv)
         r = 0;
     } else {
         printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
-        char* g1t_pos = strstr(argv[argc - 1], ".g1t");
-        if (g1t_pos == NULL) {
-            fprintf(stderr, "ERROR: File should have a '.g1t' extension\n");
+        size_t len = strlen(argv[argc - 1]);
+        if ((len < 4) || (argv[argc - 1][len - 4] != '.') || (argv[argc - 1][len - 3] != 'g') ||
+            ((argv[argc - 1][len - 2] != '1') && (argv[argc - 1][len - 2] != 't')) ||
+            ((argv[argc - 1][len - 1] != '1') && (argv[argc - 1][len - 1] != 't')) ) {
+            fprintf(stderr, "ERROR: File should have a '.g1t' or 'gt1' extension\n");
             goto out;
         }
-
+        char* g1t_pos = &argv[argc - 1][len - 4];
         file = fopen_utf8(argv[argc - 1], "rb");
         if (file == NULL) {
             fprintf(stderr, "ERROR: Can't open file '%s'", argv[argc - 1]);
@@ -552,7 +554,7 @@ int main_utf8(int argc, char** argv)
             fprintf(stderr, "ERROR: Can't read from '%s'", argv[argc - 1]);
             goto out;
         }
-        if (magic != G1TG_MAGIC) {
+        if (magic != GT1G_MAGIC) {
             fprintf(stderr, "ERROR: Not a G1T file (bad magic)");
             goto out;
         }

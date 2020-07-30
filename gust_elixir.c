@@ -71,7 +71,7 @@ int main_utf8(int argc, char** argv)
     bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
     if ((argc != 2) && !list_only) {
-        printf("%s %s (c) 2019 VitaSmith\n\n"
+        printf("%s %s (c) 2019-2020 VitaSmith\n\n"
             "Usage: %s [-l] <elixir[.gz]> file>\n\n"
             "Extracts (file) or recreates (directory) a Gust .elixir archive.\n\n"
             "Note: A backup (.bak) of the original is automatically created, when the target\n"

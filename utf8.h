@@ -26,6 +26,7 @@
 #endif
 
 #include <stdio.h>
+#include <wchar.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -86,6 +87,16 @@ static __inline FILE* fopen_utf8(const char* filename, const char* mode)
     _wfopen_s(&r, filename16, mode16);
     free(filename16);
     free(mode16);
+    return r;
+}
+
+static __inline int rename_utf8(const char* oldname, const char* newname)
+{
+    wchar_t* oldname16 = utf8_to_utf16(oldname);
+    wchar_t* newname16 = utf8_to_utf16(newname);
+    int r = _wrename(oldname16, newname16);
+    free(oldname16);
+    free(newname16);
     return r;
 }
 

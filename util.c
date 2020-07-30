@@ -125,7 +125,7 @@ void create_backup(const char* path)
         strcpy(backup_path, path);
         strcat(backup_path, ".bak");
         if (stat64_utf8(backup_path, &st) != 0) {
-            if (rename(path, backup_path) == 0)
+            if (rename_utf8(path, backup_path) == 0)
                 printf("Saved backup as '%s'\n", backup_path);
             else
                 fprintf(stderr, "WARNING: Could not create backup file '%s\n", backup_path);
