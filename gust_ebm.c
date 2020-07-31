@@ -144,11 +144,8 @@ int main_utf8(int argc, char** argv)
             if (ebm_header[++j] != 0)
                 json_object_set_number(json_object(json_message), "extra_id", (double)ebm_header[j]);
             json_object_set_number(json_object(json_message), "expr_id", (double)ebm_header[++j]);
-            if (ebm_header[++j] > 0x00010000) {
-                if ((ebm_header[j++] != 0xffffffff) || (ebm_header[j++] != 0xffffffff)) {
-                    fprintf(stderr, "ERROR: Don't know how to handle this type of .ebm file\n");
-                    goto out;
-                }
+            if ((ebm_header[++j] == 0xffffffff) && (ebm_header[j + 1] == 0xffffffff)) {
+                j += 2;
                 if (header_size == 0) {
                     header_size = 11;
                 } else if (header_size != 11) {
