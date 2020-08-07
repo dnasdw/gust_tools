@@ -123,6 +123,7 @@ static __inline int stat64_utf8(const char* path, struct stat64* buffer)
 }
 #else
 #define fopen_utf8 fopen
+#define rename_utf8 rename
 #define stat64_utf8 stat64
 #define CALL_MAIN int main(int argc, char** argv) {         \
     return main_utf8(argc, argv);                           \

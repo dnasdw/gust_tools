@@ -72,7 +72,7 @@ typedef struct {
 
 // Bitmap list prime numbers below a specific value
 static uint8_t* prime_list = NULL;
-static uint32_t random[2];
+static uint32_t random_seed[2];
 static bool big_endian = true;
 
 #define getdata16(x) (big_endian ? getbe16(x) : getle16(x))
@@ -83,22 +83,22 @@ static bool big_endian = true;
 /*
  * Helper functions to generate predictible semirandom numbers
  */
-static void inline init_random(uint32_t r0, uint32_t r1)
+static __inline void init_random(uint32_t r0, uint32_t r1)
 {
-    random[0] = RANDOM_CONSTANT + r0;
-    random[1] = r1;
+    random_seed[0] = RANDOM_CONSTANT + r0;
+    random_seed[1] = r1;
 }
 
-static uint16_t inline get_random_u15(void)
+static __inline uint16_t get_random_u15(void)
 {
-    random[1] = random[0] * random[1] + RANDOM_INCREMENT;
-    return (random[1] >> 16) & 0x7fff;
+    random_seed[1] = random_seed[0] * random_seed[1] + RANDOM_INCREMENT;
+    return (random_seed[1] >> 16) & 0x7fff;
 }
 
-static uint16_t inline get_random_u16(void)
+static __inline uint16_t get_random_u16(void)
 {
-    random[1] = random[0] * random[1] + RANDOM_INCREMENT;
-    return random[1] >> 16;
+    random_seed[1] = random_seed[0] * random_seed[1] + RANDOM_INCREMENT;
+    return random_seed[1] >> 16;
 }
 
 /*
@@ -214,12 +214,12 @@ static bool rotating_scrambler(uint8_t* buf, uint32_t buf_size, const seed_data*
     for (uint32_t i = 0; i < buf_size; i++) {
         buf[i] ^= get_random_u16();
         if (++processed_for_this_seed >= seeds->length[seed_index] + seed_switch_fudge) {
-            seed_table[seed_index++] = random[1];
+            seed_table[seed_index++] = random_seed[1];
             if (seed_index >= array_size(seed_table)) {
                 seed_index = 0;
                 seed_switch_fudge++;
             }
-            random[1] = seed_table[seed_index];
+            random_seed[1] = seed_table[seed_index];
             processed_for_this_seed = 0;
         }
     }
