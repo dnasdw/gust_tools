@@ -50,8 +50,8 @@
 #define E_FOOTER_SIZE       0x10
 
 // Both of these are prime numbers
-#define SEED_CONSTANT       0x3b9a73c9
-#define SEED_INCREMENT      0x2f09
+#define RANDOM_CONSTANT     0x3b9a73c9
+#define RANDOM_INCREMENT    0x2f09
 #define MB                  (1024 * 1024)
 
 // For Sophie's GrowData.xml.e
@@ -61,21 +61,45 @@
 
 //#define CREATE_EXTRA_FILES
 
+//#define USE_GLAZED
+
 typedef struct {
     uint32_t main[3];
     uint32_t table[3];
     uint32_t length[3];
-    uint32_t fence;
+    uint16_t fence;
 } seed_data;
 
 // Bitmap list prime numbers below a specific value
-uint8_t* prime_list = NULL;
-bool big_endian = true;
+static uint8_t* prime_list = NULL;
+static uint32_t random[2];
+static bool big_endian = true;
 
 #define getdata16(x) (big_endian ? getbe16(x) : getle16(x))
 #define getdata32(x) (big_endian ? getbe32(x) : getle32(x))
 #define setdata16(x, v) (big_endian ? setbe16(x, v): setle16(x, v))
 #define setdata32(x, v) (big_endian ? setbe32(x, v): setle32(x, v))
+
+/*
+ * Helper functions to generate predictible semirandom numbers
+ */
+static void inline init_random(uint32_t r0, uint32_t r1)
+{
+    random[0] = RANDOM_CONSTANT + r0;
+    random[1] = r1;
+}
+
+static uint16_t inline get_random_u15(void)
+{
+    random[1] = random[0] * random[1] + RANDOM_INCREMENT;
+    return (random[1] >> 16) & 0x7fff;
+}
+
+static uint16_t inline get_random_u16(void)
+{
+    random[1] = random[0] * random[1] + RANDOM_INCREMENT;
+    return random[1] >> 16;
+}
 
 /*
  * Stupid sexy scramblers ("Feels like I'm reading nothing at all!")
@@ -88,8 +112,8 @@ bool big_endian = true;
  */
 
 // Scramble individual bits between two semi-random bit positions within a slice.
-static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
-                          uint32_t slice_size, bool descramble)
+static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t slice_size,
+                          bool descramble)
 {
     // Table_size needs to be 8 * slice_size, to encompass all individual bit positions
     uint32_t x, table_size = slice_size << 3;
@@ -113,9 +137,8 @@ static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
 
         // Now create a scrambled table from the above
         for (uint32_t i = 0; i < table_size; i++) {
-            seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
             // Translate this semi-random value to a base_table index we haven't used yet
-            x = ((seed[1] >> 16) & 0x7FFF) % (table_size - i);
+            x = get_random_u15() % (table_size - i);
             scrambling_table[i] = base_table[x];
             // Now remove the value we used from base_table
             memmove(&base_table[x], &base_table[x + 1], (size_t)(table_size - i - x) * 2);
@@ -159,38 +182,21 @@ static bool bit_scrambler(uint8_t* chunk, uint32_t chunk_size, uint32_t seed[2],
 
 // Sequentially scramble bytes by adding the updated seed and, depending on whether
 // the modulo with the current seed falls above or below a "fence", XORing the seed.
-static bool fenced_scrambler(uint8_t* buf, uint32_t buf_size, seed_data* seeds,
+static bool fenced_scrambler(uint8_t* buf, uint32_t buf_size, uint16_t fence,
                              bool descramble, bool extra_fudge)
 {
-    uint32_t seed[2] = { SEED_CONSTANT, seeds->main[1] };
     for (uint32_t i = 0; i < buf_size; i += 2) {
-        seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
-        // TODO: x and y and fence should be 16 bits
-        uint32_t x = (seed[1] >> 16) & 0x7fff;
+        uint16_t x = get_random_u15();
         uint16_t w = getdata16(&buf[i]);
         // The fence is a 12-bit prime number
         if (descramble) {
-            if (x % (seeds->fence * 2) >= seeds->fence) {
-                if (extra_fudge) {
-                    seed[1] = seed[1] * seed[0] + SEED_INCREMENT;
-                    uint32_t y = (seed[1] >> 16) & 0x7fff;
-                    w ^= y;
-                } else {
-                    w ^= x;
-                }
-            }
-            w -= (uint16_t)x;
+            if (x % (fence * 2) >= fence)
+                w ^= extra_fudge ? get_random_u15() : x;
+            w -= x;
         } else {
-            w += (uint16_t)x;
-            if (x % (seeds->fence * 2) >= seeds->fence) {
-                if (extra_fudge) {
-                    seed[1] = seed[1] * seed[0] + SEED_INCREMENT;
-                    uint32_t y = (seed[1] >> 16) & 0x7fff;
-                    w ^= y;
-                } else {
-                    w ^= x;
-                }
-            }
+            w += x;
+            if (x % (fence * 2) >= fence)
+                w ^= extra_fudge ? get_random_u15() : x;
         }
         setdata16(&buf[i], w);
     }
@@ -198,24 +204,22 @@ static bool fenced_scrambler(uint8_t* buf, uint32_t buf_size, seed_data* seeds,
 }
 
 // Sequentially scramble bytes by XORing them with a set of 3 rotated seeds.
-static bool rotating_scrambler(uint8_t* buf, uint32_t buf_size, seed_data* seeds, uint32_t file_checksum)
+static bool rotating_scrambler(uint8_t* buf, uint32_t buf_size, const seed_data* seeds)
 {
-    uint32_t seed[2] = { file_checksum + SEED_CONSTANT, seeds->table[0] };
     // We're updating seed values in the table, so make sure we work on a copy
     uint32_t seed_table[3] = { seeds->table[0], seeds->table[1], seeds->table[2] };
     uint32_t seed_index = 0;
     uint32_t seed_switch_fudge = 0;
     uint32_t processed_for_this_seed = 0;
     for (uint32_t i = 0; i < buf_size; i++) {
-        seed[1] = seed[0] * seed[1] + SEED_INCREMENT;
-        buf[i] ^= seed[1] >> 16;
+        buf[i] ^= get_random_u16();
         if (++processed_for_this_seed >= seeds->length[seed_index] + seed_switch_fudge) {
-            seed_table[seed_index++] = seed[1];
+            seed_table[seed_index++] = random[1];
             if (seed_index >= array_size(seed_table)) {
                 seed_index = 0;
                 seed_switch_fudge++;
             }
-            seed[1] = seed_table[seed_index];
+            random[1] = seed_table[seed_index];
             processed_for_this_seed = 0;
         }
     }
@@ -258,7 +262,11 @@ static uint32_t getbits(getbits_ctx* ctx, int n)
 // Boy with extended open hand, looking at butterfly: "Is this Huffman encoding?"
 static uint8_t* build_code_table(uint8_t* bitstream, uint32_t bitstream_length)
 {
-    uint32_t code_table_length = getbe32(bitstream);
+    uint32_t code_table_length = getdata32(bitstream);
+    if (code_table_length > 256 * MB) {
+        fprintf(stderr, "ERROR: Glaze code table length is too large\n");
+        return NULL;
+    }
     uint8_t* code_table = malloc(code_table_length);
     if (code_table == NULL)
         return NULL;
@@ -482,6 +490,9 @@ static uint32_t glaze(uint8_t* src, uint32_t src_size, uint8_t** dst)
     return compressed_size;
 }
 
+/*
+ * Checksum algorithms
+ */
 #define ADLER32_MOD 65521
 static uint32_t adler32(const uint8_t* data, size_t size)
 {
@@ -494,6 +505,22 @@ static uint32_t adler32(const uint8_t* data, size_t size)
     }
 
     return (b << 16) | a;
+}
+
+static uint32_t checksum_sub(uint8_t* buf, uint32_t buf_size)
+{
+    uint32_t checksum = 0;
+    for (uint32_t i = 0; i < (buf_size & ~3); i += sizeof(uint32_t))
+        checksum -= getdata32(&buf[i]);
+    return checksum;
+}
+
+static uint32_t checksum_xor(uint8_t* buf, uint32_t buf_size)
+{
+    uint32_t checksum = 0;
+    for (uint32_t i = 0; i < (buf_size & ~3); i += sizeof(uint32_t))
+        checksum ^= ~getdata32(&buf[i]);
+    return checksum;
 }
 
 static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_data* seeds,
@@ -510,42 +537,25 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     uint8_t* main_payload = &buf[E_HEADER_SIZE];
     memcpy(main_payload, payload, payload_size);
 
+    // Optionally scramble the beginning of the file
     if (version == 2) {
+        init_random(checksum[2], seeds->main[2]);
+        if (!bit_scrambler(main_payload, min(payload_size, 0x800), 0x80, false))
+            goto out;
+    }
+
+    // Compute the checksums
+    checksum[0] = checksum_sub(main_payload, payload_size);
+    checksum[1] = checksum_xor(main_payload, payload_size);
+    switch (version) {
+    case 2:
 #if !defined(VALIDATE_CHECKSUM)
         checksum[2] = adler32(payload, payload_size);
 #else
         checksum[2] = VALIDATE_CHECKSUM;
 #endif
-    }
-
-    // Optionally scramble the beginning of the file
-    uint32_t seed[2] = { checksum[2] + SEED_CONSTANT, seeds->main[2] };
-    if (version == 2) {
-        if (!bit_scrambler(main_payload, min(payload_size, 0x800), seed, 0x80, false))
-            goto out;
-    }
-
-    // Compute the checksums
-    switch (version) {
-    case 2:
-        for (uint32_t i = 0; i < (payload_size & ~3); i += sizeof(uint32_t)) {
-            checksum[0] -= getdata32(&main_payload[i]);
-            checksum[1] ^= ~getdata32(&main_payload[i]);
-        }
         break;
     case 3:
-        for (uint32_t i = 0; i < (payload_size & ~3); i += 2 * sizeof(uint32_t)) {
-            uint32_t* val = (uint32_t*)&payload[i];
-            if (i + sizeof(uint32_t) < (payload_size & ~3)) {
-                checksum[0] -= val[0];
-                checksum[2] -= val[1];
-                checksum[1] ^= val[0] ^ val[1];
-            } else {
-                checksum[0] -= val[0];
-                checksum[1] ^= ~val[0];
-            }
-        }
-        checksum[0] += checksum[2];
         checksum[2] = seeds->main[0];
         break;
     default:
@@ -558,7 +568,8 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     setdata32(&main_payload[(size_t)main_payload_size + 12], checksum[2]);
 
     // Call the main scrambler
-    if (!rotating_scrambler(main_payload, payload_size, seeds, checksum[2]))
+    init_random(checksum[2], seeds->table[0]);
+    if (!rotating_scrambler(main_payload, payload_size, seeds))
         goto out;
 
     // Add the end of payload marker
@@ -568,15 +579,15 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     main_payload_size += E_FOOTER_SIZE;
 
     // Call first scrambler
-    if (!fenced_scrambler(main_payload, main_payload_size, seeds, false, (version == 3)))
+    init_random(0, seeds->main[1]);
+    if (!fenced_scrambler(main_payload, main_payload_size, seeds->fence, false, (version == 3)))
         goto out;
 
     // Apply optional extra scrambling to the end of the file
     if (version == 2) {
-        seed[0] = SEED_CONSTANT;
-        seed[1] = seeds->main[0];
+        init_random(0, seeds->main[0]);
         uint8_t* chunk = &main_payload[main_payload_size - min(main_payload_size, 0x800)];
-        if (!bit_scrambler(chunk, min(main_payload_size, 0x800), seed, 0x100, false))
+        if (!bit_scrambler(chunk, min(main_payload_size, 0x800), 0x100, false))
             goto out;
     }
 
@@ -618,31 +629,31 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     payload = &payload[E_HEADER_SIZE];
     payload_size -= E_HEADER_SIZE;
 
-    uint32_t seed[2] = { SEED_CONSTANT, seeds->main[0] };
-
     // Revert the optional bit scrambling applied to the end of the file
     if (version == 2) {
         uint8_t* chunk = &payload[payload_size - min(payload_size, 0x800)];
-        if (!bit_scrambler(chunk, min(payload_size, 0x800), seed, 0x100, true))
+        init_random(0, seeds->main[0]);
+        if (!bit_scrambler(chunk, min(payload_size, 0x800), 0x100, true))
             return 0;
     }
 
     // Now call the fenced scrambler on the whole payload
-    if (!fenced_scrambler(payload, payload_size, seeds, true, (version == 3)))
+    init_random(0, seeds->main[1]);
+    if (!fenced_scrambler(payload, payload_size, seeds->fence, true, (version == 3)))
         return 0;
 
     // Read the descrambled checksums footer (16 bytes)
     uint32_t* footer = (uint32_t*)&payload[payload_size - E_FOOTER_SIZE];
     payload_size -= E_FOOTER_SIZE;
-    if ((footer[0] != 0) && (footer[0] != 0x000000ff) && (footer[0] != 0xff000000)) {
+    if ((getdata32(footer) != 0) && (getdata32(footer) != 0x000000ff)) {
         fprintf(stderr, "ERROR: Unexpected footer value: 0x%08x\n", footer[0]);
         return 0;
     }
     // The 3rd checksum is probably leftover from the compression algorithm used
 #if defined(VALIDATE_CHECKSUM)
-    printf("3rd checksum = 0x%08x\n", getbe32(&footer[3]));
+    printf("3rd checksum = 0x%08x\n", getdata32(&footer[3]));
 #endif
-    uint32_t checksum[3] = { 0 - getdata32(&footer[1]), getdata32(&footer[2]), getdata32(&footer[3]) };
+    uint32_t checksum[3] = { getdata32(&footer[1]), getdata32(&footer[2]), getdata32(&footer[3]) };
 
     // Look for the bitstream_end marker and adjust our size
     for (; (payload_size > 0) && (payload[payload_size] != 0xff); payload_size--);
@@ -659,35 +670,13 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     }
 
     // Now call the rotating scrambler on the actual payload
-    if (!rotating_scrambler(payload, payload_size, seeds, checksum[2]))
+    init_random(checksum[2], seeds->table[0]);
+    if (!rotating_scrambler(payload, payload_size, seeds))
         return 0;
 
     // Validate the checksums
-    switch(version) {
-    case 2:
-        for (uint32_t i = 0; i < (payload_size & ~3); i += sizeof(uint32_t)) {
-            checksum[0] -= getdata32(&payload[i]);
-            checksum[1] ^= ~getdata32(&payload[i]);
-        }
-        break;
-    case 3:
-        checksum[2] = 0;
-        for (uint32_t i = 0; i < (payload_size & ~3); i += 2 * sizeof(uint32_t)) {
-            uint32_t* val = (uint32_t*)&payload[i];
-            if (i + sizeof(uint32_t) < (payload_size & ~3)) {
-                checksum[0] -= val[0];
-                checksum[2] -= val[1];
-                checksum[1] ^= val[0] ^ val[1];
-            } else {
-                checksum[0] -= val[0];
-                checksum[1] ^= ~val[0];
-            }
-        }
-        checksum[0] += checksum[2];
-        break;
-    default:
-        return 0;
-    }
+    checksum[0] -= checksum_sub(payload, payload_size);
+    checksum[1] ^= checksum_xor(payload, payload_size);
     if ((checksum[0] != 0) || (checksum[1] != 0)) {
         fprintf(stderr, "ERROR: Descrambler checksum mismatch\n");
         return 0;
@@ -699,9 +688,8 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
 
     // Revert the optional bit scrambling applied to the start of the file
     if (version == 2) {
-        seed[0] = checksum[2] + SEED_CONSTANT;
-        seed[1] = seeds->main[2];
-        if (!bit_scrambler(payload, min(payload_size, 0x800), seed, 0x80, true))
+        init_random(checksum[2], seeds->main[2]);
+        if (!bit_scrambler(payload, min(payload_size, 0x800), 0x80, true))
             return 0;
     }
 
@@ -866,7 +854,7 @@ int main_utf8(int argc, char** argv)
             max_seed_value = seeds.table[i];
         seeds.length[i] = (uint32_t)json_array_get_number(json_object_get_array(seeds_entry, "length"), i);
     }
-    seeds.fence = (uint32_t)json_object_get_number(seeds_entry, "fence");
+    seeds.fence = (uint16_t)json_object_get_number(seeds_entry, "fence");
     bool validate_primes = json_object_get_boolean(json_object(json), "validate_primes");
     json_value_free(json);
 
@@ -902,7 +890,6 @@ int main_utf8(int argc, char** argv)
     if (e_pos == NULL) {
         printf("Encoding '%s'...\n", basename(argv[argc - 1]));
         // Compress and scramble a file
-//#define USE_GLAZED
 #if defined(USE_GLAZED)
         dst = malloc(src_size);
         memcpy(dst, src, src_size);
@@ -956,7 +943,7 @@ int main_utf8(int argc, char** argv)
 #if defined(VALIDATE_CHECKSUM)
         // "We can rebuild (it), we have the technology."
         snprintf(path, sizeof(path), "%s.rebuilt", argv[argc - 1]);
-        scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, working_size);
+        scramble(&src[E_HEADER_SIZE], payload_size, path, &seeds, working_size, version);
 #endif
 
         // Uncompress descrambled data
