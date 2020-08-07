@@ -1,6 +1,6 @@
 /*
   Common code for Gust (Koei/Tecmo) PC games tools
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -97,7 +97,7 @@ uint32_t read_file(const char* path, uint8_t** buf)
     uint32_t size = (uint32_t)ftell(file);
     fseek(file, 0L, SEEK_SET);
 
-    *buf = malloc(size);
+    *buf = calloc(size, 1);
     if (*buf == NULL) {
         size = 0;
         goto out;
