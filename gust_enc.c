@@ -645,8 +645,8 @@ static uint32_t unscramble(uint8_t* payload, uint32_t payload_size, seed_data* s
     // Read the descrambled checksums footer (16 bytes)
     uint32_t* footer = (uint32_t*)&payload[payload_size - E_FOOTER_SIZE];
     payload_size -= E_FOOTER_SIZE;
-    if ((getdata32(footer) != 0) && (getdata32(footer) != 0x000000ff)) {
-        fprintf(stderr, "ERROR: Unexpected footer value: 0x%08x\n", footer[0]);
+    if ((getdata32(footer) != 0) && (getdata32(footer) != 0x000000ff) && (getdata32(footer) != 0xff000000)) {
+        fprintf(stderr, "ERROR: Unexpected footer value: 0x%08x\n", getdata32(footer));
         return 0;
     }
     // The 3rd checksum is probably leftover from the compression algorithm used
