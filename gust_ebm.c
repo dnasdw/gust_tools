@@ -1,6 +1,6 @@
 /*
   gust_ebm - Ebm file processor for Gust (Koei/Tecmo) PC games
-  Copyright © 2019 VitaSmith
+  Copyright © 2019-2020 VitaSmith
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -85,6 +85,7 @@ int main_utf8(int argc, char** argv)
             goto out;
         }
         uint32_t ebm_header[11];
+        uint32_t padding = 0;
         for (uint32_t i = 0; i < nb_messages; i++) {
             JSON_Object* json_message = json_array_get_object(json_messages, i);
             memset(ebm_header, 0, sizeof(ebm_header));
@@ -100,7 +101,7 @@ int main_utf8(int argc, char** argv)
                 ebm_header[++j] = 0xffffffff;
             }
             ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "msg_id");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "unknown4");
+            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "unknown2");
             const char* msg_string = json_object_get_string(json_message, "msg_string");
             ebm_header[++j] = (uint32_t)strlen(msg_string) + 1;
             if (fwrite(ebm_header, header_size * sizeof(uint32_t), 1, file) != 1) {
@@ -110,6 +111,12 @@ int main_utf8(int argc, char** argv)
             if (fwrite(msg_string, 1, ebm_header[j], file) != ebm_header[j]) {
                 fprintf(stderr, "ERROR: Can't write message data\n");
                 goto out;
+            }
+            if (json_object_get_boolean(json_message, "padding")) {
+                if (fwrite(&padding, sizeof(padding), 1, file) != 1) {
+                    fprintf(stderr, "ERROR: Can't write padding\n");
+                    goto out;
+                }
             }
         }
         r = 0;
@@ -170,6 +177,11 @@ int main_utf8(int argc, char** argv)
             json_object_set_string(json_object(json_message), "msg_string", ptr);
             json_array_append_value(json_array(json_messages), json_message);
             ebm_header = (uint32_t*) &ptr[str_length];
+            // Some ebm's (e.g. NOA2) have 32-bit padding after the string
+            if (*ebm_header == 0) {
+                json_object_set_boolean(json_object(json_message), "padding", true);
+                ebm_header = &ebm_header[1];
+            }
         }
         json_object_set_number(json_object(json), "header_size", header_size);
         json_object_set_value(json_object(json), "messages", json_messages);
