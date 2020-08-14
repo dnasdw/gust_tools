@@ -527,7 +527,7 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
                      uint32_t working_size, uint32_t version)
 {
     bool r = false;
-    uint32_t checksum[3] = { 0, 0, 0 };
+    uint32_t adler_sum, checksum[3] = { 0, 0, 0 };
 
     // Align the size (plus an extra byte for the end marker) to 16-bytes
     uint32_t main_payload_size = (payload_size + 1 + 0xf) & ~0xf;
@@ -536,10 +536,11 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
         return false;
     uint8_t* main_payload = &buf[E_HEADER_SIZE];
     memcpy(main_payload, payload, payload_size);
+    adler_sum = adler32(payload, payload_size);
 
     // Optionally scramble the beginning of the file
     if (version == 2) {
-        init_random(checksum[2], seeds->main[2]);
+        init_random(adler_sum, seeds->main[2]);
         if (!bit_scrambler(main_payload, min(payload_size, 0x800), 0x80, false))
             goto out;
     }
@@ -550,7 +551,7 @@ static bool scramble(uint8_t* payload, uint32_t payload_size, char* path, seed_d
     switch (version) {
     case 2:
 #if !defined(VALIDATE_CHECKSUM)
-        checksum[2] = adler32(payload, payload_size);
+        checksum[2] = adler_sum;
 #else
         checksum[2] = VALIDATE_CHECKSUM;
 #endif
