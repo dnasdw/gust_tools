@@ -85,6 +85,15 @@ char* change_extension(const char* path, const char* extension)
     return new_path;
 }
 
+size_t get_trailing_slash(const char* path)
+{
+    size_t i;
+    if ((path == NULL) || (path[0] == 0))
+        return 0;
+    for (i = strlen(path) - 1; (i > 0) && ((path[i] != '/') && (path[i] != '\\')); i--);
+    return (i == 0) ? 0: i + 1;
+}
+
 uint32_t read_file(const char* path, uint8_t** buf)
 {
     FILE* file = fopen_utf8(path, "rb");

@@ -69,6 +69,9 @@ enum DDS_FORMAT {
     DDS_FORMAT_DXT3,
     DDS_FORMAT_DXT5,
     DDS_FORMAT_DX10,
+    DDS_FORMAT_BC4,
+    DDS_FORMAT_BC5,
+    DDS_FORMAT_BC6,
     DDS_FORMAT_BC7
 };
 
@@ -267,7 +270,10 @@ static __inline uint32_t get_fourCC(int format)
         return MAKEFOURCC('D', 'X', 'T', '3');
     case DDS_FORMAT_DXT5:
         return MAKEFOURCC('D', 'X', 'T', '5');
+    case DDS_FORMAT_BC4:
+        return MAKEFOURCC('A', 'T', 'I', '1');
     case DDS_FORMAT_BC7:
+        return MAKEFOURCC('B', 'P', 'T', 'C');
     case DDS_FORMAT_DX10:
         return MAKEFOURCC('D', 'X', '1', '0');
     default:

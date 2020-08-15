@@ -201,6 +201,7 @@ static __inline void setbe64(const void* p, const uint64_t v)
 
 bool create_path(char* path);
 char* change_extension(const char* path, const char* extension);
+size_t get_trailing_slash(const char* path);
 
 bool is_file(const char* path);
 bool is_directory(const char* path);

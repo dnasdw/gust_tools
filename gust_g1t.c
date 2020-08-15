@@ -290,7 +290,7 @@ int main_utf8(int argc, char** argv)
     uint8_t* buf = NULL;
     uint32_t* offset_table = NULL;
     uint32_t magic;
-    char path[256];
+    char path[256], *dir = NULL;
     JSON_Value* json = NULL;
     bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
     bool flip_image = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'f');
@@ -332,11 +332,17 @@ int main_utf8(int argc, char** argv)
             goto out;
         if (!flip_image)
             flip_image = json_object_get_boolean(json_object(json), "flip");
-        printf("Creating '%s'...\n", filename);
-        create_backup(filename);
-        file = fopen_utf8(filename, "wb+");
+        strcpy_s(path, sizeof(path), argv[argc - 1]);
+        if (get_trailing_slash(path) != 0)
+            path[get_trailing_slash(path)] = 0;
+        else
+            path[0] = 0;
+        strcat_s(path, sizeof(path), filename);
+        printf("Creating '%s'...\n", path);
+        create_backup(path);
+        file = fopen_utf8(path, "wb+");
         if (file == NULL) {
-            fprintf(stderr, "ERROR: Can't create file '%s'\n", filename);
+            fprintf(stderr, "ERROR: Can't create file '%s'\n", path);
             goto out;
         }
         g1t_header hdr = { 0 };
@@ -462,6 +468,7 @@ int main_utf8(int argc, char** argv)
             case 0x45: bits_per_pixel = 24; tl = 8; tr = TRANSFORM_N; break;
             case 0x59: bits_per_pixel = 4; break;
             case 0x5B: bits_per_pixel = 8; break;
+            case 0x5C: bits_per_pixel = 4; break;
             case 0x5F: bits_per_pixel = 8; break;
             case 0x60: bits_per_pixel = 4; supported = false; break;    // UNSUPPORTED!!
             case 0x62: bits_per_pixel = 8; supported = false; break;    // UNSUPPORTED!!
@@ -535,7 +542,7 @@ int main_utf8(int argc, char** argv)
         }
         r = 0;
     } else {
-        printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", basename(argv[argc - 1]));
+        printf("%s '%s'...\n", list_only ? "Listing" : "Extracting", argv[argc - 1]);
         size_t len = strlen(argv[argc - 1]);
         if ((len < 4) || (argv[argc - 1][len - 4] != '.') || (argv[argc - 1][len - 3] != 'g') ||
             ((argv[argc - 1][len - 2] != '1') && (argv[argc - 1][len - 2] != 't')) ||
@@ -608,6 +615,12 @@ int main_utf8(int argc, char** argv)
         for (size_t i = 0; i < strlen(basename(argv[argc - 1])); i++)
             putchar(' ');
         printf("     DIMENSIONS MIPMAPS SUPPORTED?\n");
+        dir = _strdup(argv[argc - 1]);
+        if (dir == NULL) {
+            fprintf(stderr, "ERROR: Alloc error\n");
+            goto out;
+        }
+        dir[get_trailing_slash(dir)] = 0;
         for (uint32_t i = 0; i < hdr->nb_textures; i++) {
             // There's an array of flags after the hdr
             json_array_append_number(json_array(json_flags_array), getle32(&buf[(uint32_t)sizeof(g1t_header) + 4 * i]));
@@ -648,8 +661,8 @@ int main_utf8(int argc, char** argv)
             case 0x45: texture_format = DDS_FORMAT_BGR; bits_per_pixel = 24; break;
             case 0x59: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; break;
             case 0x5B: texture_format = DDS_FORMAT_DXT5; bits_per_pixel = 8; break;
-//            case 0x5C: texture_format = DDS_FORMAT_ATI1; bits_per_pixel = ?; break;
-//            case 0x5D: texture_format = DDS_FORMAT_ATI2; bits_per_pixel = ?; break;
+            case 0x5C: texture_format = DDS_FORMAT_BC4; bits_per_pixel = 4; break;
+//            case 0x5D: texture_format = DDS_FORMAT_BC5; bits_per_pixel = ?; break;
 //            case 0x5E: texture_format = DDS_FORMAT_BC6; bits_per_pixel = ?; break;
             case 0x5F: texture_format = DDS_FORMAT_BC7; bits_per_pixel = 8; break;
             case 0x60: texture_format = DDS_FORMAT_DXT1; bits_per_pixel = 4; supported = false; break;  // UNSUPPORTED!!
@@ -669,11 +682,11 @@ int main_utf8(int argc, char** argv)
                 fprintf(stderr, "ERROR: Computed texture size is larger than actual size\n");
                 continue;
             }
-            snprintf(path, sizeof(path), "%s%c%03d.dds", basename(argv[argc - 1]), PATH_SEP, i);
+            snprintf(path, sizeof(path), "%s%s%c%03d.dds", dir, basename(argv[argc - 1]), PATH_SEP, i);
             char dims[16];
             snprintf(dims, sizeof(dims), "%dx%d", width, height);
             printf("0x%02x 0x%08x 0x%08x %s %-10s %-7d %s\n", tex->type, hdr->header_size + x_offset_table[i],
-                expected_size, path, dims, tex->mipmaps, supported ? "Y" : "N");
+                expected_size, &path[strlen(dir)], dims, tex->mipmaps, supported ? "Y" : "N");
             if (list_only)
                 continue;
             FILE* dst = fopen_utf8(path, "wb");
@@ -759,6 +772,7 @@ int main_utf8(int argc, char** argv)
 out:
     json_value_free(json);
     free(buf);
+    free(dir);
     free(offset_table);
     if (file != NULL)
         fclose(file);
