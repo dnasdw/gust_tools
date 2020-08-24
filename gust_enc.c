@@ -842,7 +842,7 @@ int main_utf8(int argc, char** argv)
         printf("\n");
 
     // Get the scrambler version to use
-    uint32_t version = (uint32_t)json_object_get_number(seeds_entry, "version");
+    uint32_t version = json_object_get_uint32(seeds_entry, "version");
     if (version == 3)
         big_endian = false;
     uint32_t max_seed_value = 0;

@@ -98,7 +98,7 @@ uint32_t read_file(const char* path, uint8_t** buf)
 {
     FILE* file = fopen_utf8(path, "rb");
     if (file == NULL) {
-        fprintf(stderr, "ERROR: Can't open file '%s'\n", path);
+        fprintf(stderr, "ERROR: Can't open '%s'\n", path);
         return 0;
     }
 
@@ -112,7 +112,7 @@ uint32_t read_file(const char* path, uint8_t** buf)
         goto out;
     }
     if (fread(*buf, 1, size, file) != size) {
-        fprintf(stderr, "ERROR: Can't read file\n");
+        fprintf(stderr, "ERROR: Can't read '%s'\n", path);
         size = 0;
     }
 out:

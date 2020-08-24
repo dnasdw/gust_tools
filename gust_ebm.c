@@ -71,10 +71,10 @@ int main_utf8(int argc, char** argv)
             fprintf(stderr, "ERROR: Cannot create file '%s'\n", filename);
             goto out;
         }
-        uint32_t header_size = (uint32_t)json_object_get_number(json_object(json), "header_size");
+        uint32_t header_size = json_object_get_uint32(json_object(json), "header_size");
         if (header_size == 0)
             header_size = 9;
-        uint32_t nb_messages = (uint32_t)json_object_get_number(json_object(json), "nb_messages");
+        uint32_t nb_messages = json_object_get_uint32(json_object(json), "nb_messages");
         if (fwrite(&nb_messages, sizeof(uint32_t), 1, file) != 1) {
             fprintf(stderr, "ERROR: Can't write number of messages\n");
             goto out;
@@ -90,18 +90,18 @@ int main_utf8(int argc, char** argv)
             JSON_Object* json_message = json_array_get_object(json_messages, i);
             memset(ebm_header, 0, sizeof(ebm_header));
             uint32_t j = 0;
-            ebm_header[j] = (uint32_t)json_object_get_number(json_message, "type");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "voice_id");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "unknown1");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "name_id");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "extra_id");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "expr_id");
+            ebm_header[j] = json_object_get_uint32(json_message, "type");
+            ebm_header[++j] = json_object_get_uint32(json_message, "voice_id");
+            ebm_header[++j] = json_object_get_uint32(json_message, "unknown1");
+            ebm_header[++j] = json_object_get_uint32(json_message, "name_id");
+            ebm_header[++j] = json_object_get_uint32(json_message, "extra_id");
+            ebm_header[++j] = json_object_get_uint32(json_message, "expr_id");
             if (header_size == 11) {
                 ebm_header[++j] = 0xffffffff;
                 ebm_header[++j] = 0xffffffff;
             }
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "msg_id");
-            ebm_header[++j] = (uint32_t)json_object_get_number(json_message, "unknown2");
+            ebm_header[++j] = json_object_get_uint32(json_message, "msg_id");
+            ebm_header[++j] = json_object_get_uint32(json_message, "unknown2");
             const char* msg_string = json_object_get_string(json_message, "msg_string");
             ebm_header[++j] = (uint32_t)strlen(msg_string) + 1;
             if (fwrite(ebm_header, header_size * sizeof(uint32_t), 1, file) != 1) {

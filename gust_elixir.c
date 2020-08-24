@@ -38,7 +38,7 @@
 #include "miniz_tinfl.h"
 #include "miniz_tdef.h"
 
-#define EARC_MAGIC              0x45415243  // "EARC"
+#define EARC_MAGIC              ((uint32_t)'EARC')
 #define DEFAULT_CHUNK_SIZE      0x4000
 
 #pragma pack(push, 1)
@@ -114,13 +114,13 @@ int main_utf8(int argc, char** argv)
         }
         lxr_header hdr = { 0 };
         hdr.magic = EARC_MAGIC;
-        hdr.filename_size = (uint32_t)json_object_get_number(json_object(json),
+        hdr.filename_size = json_object_get_uint32(json_object(json),
             uses_older_version ? "version" : "filename_size");
         lxr_entry_size += 0x20 + (hdr.filename_size << 4);
-        hdr.nb_files = (uint32_t)json_object_get_number(json_object(json), "nb_files");
-        hdr.flags = (uint32_t)json_object_get_number(json_object(json), "flags");
-        hdr.header_size = (uint32_t)json_object_get_number(json_object(json), "header_size");
-        hdr.table_size = (uint32_t)json_object_get_number(json_object(json), "table_size");
+        hdr.nb_files = json_object_get_uint32(json_object(json), "nb_files");
+        hdr.flags = json_object_get_uint32(json_object(json), "flags");
+        hdr.header_size = json_object_get_uint32(json_object(json), "header_size");
+        hdr.table_size = json_object_get_uint32(json_object(json), "table_size");
         if (fwrite(&hdr, sizeof(hdr), 1, file) != 1) {
             fprintf(stderr, "ERROR: Can't write header\n");
             goto out;

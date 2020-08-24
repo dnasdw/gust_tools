@@ -3,20 +3,20 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerWorkingDirectory>$(SolutionDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>FT\MPR_Eternal_Character_pcm002erzad_body_kidsocc.g1t</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>A11V_PLUS_11</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerWorkingDirectory>$(SolutionDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>FT\MPR_Eternal_Character_pcm002erzad_body_kidsocc.g1t</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>A11V_PLUS_11</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LocalDebuggerCommandArguments>FT\MPR_Eternal_Character_pcm002erzad_body_kidsocc.g1t</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>A11V_PLUS_11</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <LocalDebuggerCommandArguments>FT\MPR_Eternal_Character_pcm002erzad_body_kidsocc.g1t</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>A11V_PLUS_11</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$(SolutionDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>

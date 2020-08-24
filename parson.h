@@ -32,6 +32,7 @@ extern "C"
 #endif
 
 #include <stddef.h>   /* size_t */
+#include <stdint.h>
 
 /* Types and enums */
 typedef struct json_object_t JSON_Object;
@@ -117,6 +118,10 @@ const char  * json_object_get_string (const JSON_Object *object, const char *nam
 JSON_Object * json_object_get_object (const JSON_Object *object, const char *name);
 JSON_Array  * json_object_get_array  (const JSON_Object *object, const char *name);
 double        json_object_get_number (const JSON_Object *object, const char *name); /* returns 0 on fail */
+#define       json_object_get_uint8   (uint8_t)json_object_get_number
+#define       json_object_get_uint16  (uint16_t)json_object_get_number
+#define       json_object_get_uint32  (uint32_t)json_object_get_number
+#define       json_object_get_uint64  (uint64_t)json_object_get_number
 int           json_object_get_boolean(const JSON_Object *object, const char *name); /* returns -1 on fail */
 
 /* dotget functions enable addressing values with dot notation in nested objects,

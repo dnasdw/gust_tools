@@ -1,6 +1,6 @@
 /*
-  gust_pak - Archive unpacker for Gust (Koei/Tecmo) PC games
-  Copyright © 2019 VitaSmith
+  gust_pak - PAK archive unpacker for Gust (Koei/Tecmo) PC games
+  Copyright © 2019-2020 VitaSmith
   Copyright © 2018 Yuri Hime (shizukachan)
 
   This program is free software: you can redistribute it and/or modify
@@ -98,7 +98,7 @@ int main_utf8(int argc, char** argv)
     bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
     if ((argc != 2) && !list_only) {
-        printf("%s %s (c) 2018-2019 Yuri Hime & VitaSmith\n\n"
+        printf("%s %s (c) 2018-2020 Yuri Hime & VitaSmith\n\n"
             "Usage: %s [-l] <Gust PAK file>\n\n"
             "Extracts (.pak) or recreates (.json) a Gust .pak archive.\n\n",
             appname(argv[0]), GUST_TOOLS_VERSION_STR, appname(argv[0]));
@@ -119,14 +119,14 @@ int main_utf8(int argc, char** argv)
             goto out;
         }
         const char* filename = json_object_get_string(json_object(json), "name");
-        hdr.header_size = (uint32_t)json_object_get_number(json_object(json), "header_size");
+        hdr.header_size = json_object_get_uint32(json_object(json), "header_size");
         if ((filename == NULL) || (hdr.header_size != sizeof(pak_header))) {
             fprintf(stderr, "ERROR: No filename/wrong header size\n");
             goto out;
         }
-        hdr.version = (uint32_t)json_object_get_number(json_object(json), "version");
-        hdr.flags = (uint32_t)json_object_get_number(json_object(json), "flags");
-        hdr.nb_files = (uint32_t)json_object_get_number(json_object(json), "nb_files");
+        hdr.version = json_object_get_uint32(json_object(json), "version");
+        hdr.flags = json_object_get_uint32(json_object(json), "flags");
+        hdr.nb_files = json_object_get_uint32(json_object(json), "nb_files");
         is_pak64 = json_object_get_boolean(json_object(json), "64-bit");
         printf("Creating '%s'...\n", filename);
         create_backup(filename);
@@ -177,7 +177,7 @@ int main_utf8(int argc, char** argv)
             }
 
             set_entry(i, data_offset, ftell64(file) - file_data_offset);
-            uint64_t flags = (uint64_t)json_object_get_number(file_entry, "flags");
+            uint64_t flags = json_object_get_uint64(file_entry, "flags");
             if (is_pak64)
                 setbe64(&(entries64[i].flags), flags);
             else
@@ -253,7 +253,7 @@ int main_utf8(int argc, char** argv)
         is_pak64 = (sum[0] > sum[1]);
         printf("Detected %s PAK format\n\n", is_pak64 ? "A18/64-bit" : "A17/32-bit");
 
-        // Store the data we'll need to reconstruct the archibe to a JSON file
+        // Store the data we'll need to reconstruct the archive to a JSON file
         json = json_value_init_object();
         json_object_set_string(json_object(json), "name", change_extension(basename(argv[argc - 1]), ".pak"));
         json_object_set_number(json_object(json), "version", hdr.version);
