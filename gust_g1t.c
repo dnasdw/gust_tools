@@ -27,10 +27,12 @@
 #include "parson.h"
 #include "dds.h"
 
-#define GT1G_MAGIC              0x47315447  // "G1TG"
-#define G1T_TEX_EXTRA_FLAG      0x10000000
 #define JSON_VERSION            1
-#define json_object_get_uint32  (uint32_t)json_object_get_number
+#define GT1G_MAGIC              ((uint32_t)'G1TG')
+
+// G1T texture flags
+#define G1T_FLAG_SRGB           0x02000000  // Not sure if this one is correct...
+#define G1T_FLAG_EXTRA_CONTENT  0x10000000
 
 #pragma pack(push, 1)
 typedef struct {
@@ -52,7 +54,7 @@ typedef struct {
     uint8_t     dx : 4;
     uint8_t     dy : 4;
     uint8_t     unused;         // Always 0x00
-    uint32_t    flags;          // 0x10211000 or 0x00211000
+    uint32_t    flags;          // 0x10211000 or 0x00211000 or 0x12222000 for FT SRGB
 } g1t_tex_header;
 
 // May be followed by extra_data[]
@@ -85,7 +87,7 @@ const char* transform_op[] = {
 #define NO_TILING       0
 
 static size_t write_dds_header(FILE* fd, int format, uint32_t width,
-                               uint32_t height, uint32_t mipmaps)
+                               uint32_t height, uint32_t mipmaps, uint32_t flags)
 {
     if ((fd == NULL) || (width == 0) || (height == 0))
         return 0;
@@ -124,12 +126,12 @@ static size_t write_dds_header(FILE* fd, int format, uint32_t width,
     if (r != 1)
         return r;
     if (format == DDS_FORMAT_BC7) {
-        DDS_HEADER_DXT10 header10 = { 0 };
-        header10.dxgiFormat = DXGI_FORMAT_BC7_UNORM;
-        header10.resourceDimension = D3D10_RESOURCE_DIMENSION_TEXTURE2D;
-        header10.miscFlags2 = DDS_ALPHA_MODE_STRAIGHT;
-        header10.arraySize = 1; // Must be set to 1 for 3D texture
-        r = fwrite(&header10, sizeof(DDS_HEADER_DXT10), 1, fd);
+        DDS_HEADER_DXT10 dxt10_hdr = { 0 };
+        dxt10_hdr.dxgiFormat = (flags & G1T_FLAG_SRGB) ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM;
+        dxt10_hdr.resourceDimension = D3D10_RESOURCE_DIMENSION_TEXTURE2D;
+        dxt10_hdr.miscFlags2 = DDS_ALPHA_MODE_STRAIGHT;
+        dxt10_hdr.arraySize = 1; // Must be set to 1 for 3D texture
+        r = fwrite(&dxt10_hdr, sizeof(DDS_HEADER_DXT10), 1, fd);
     }
     return r;
 }
@@ -392,7 +394,7 @@ int main_utf8(int argc, char** argv)
             offset_table[i] = ftell(file) - hdr.header_size;
             JSON_Object* texture_entry = json_array_get_object(textures_array, i);
             g1t_tex_header tex = { 0 };
-            tex.type = (uint8_t)json_object_get_number(texture_entry, "type");
+            tex.type = json_object_get_uint8(texture_entry, "type");
             tex.flags = json_object_get_uint32(texture_entry, "flags");
             // Read the DDS file
             snprintf(path, sizeof(path), "%s%c%s", basename(argv[argc - 1]), PATH_SEP,
@@ -408,9 +410,12 @@ int main_utf8(int argc, char** argv)
             }
             DDS_HEADER* dds_header = (DDS_HEADER*)&buf[sizeof(uint32_t)];
             dds_size -= sizeof(uint32_t) + sizeof(DDS_HEADER);
-            // We may have a DX10 additional hdr
-            if (dds_header->ddspf.fourCC == get_fourCC(DDS_FORMAT_DX10))
+            uint8_t* dds_payload = (uint8_t*)&buf[sizeof(uint32_t) + sizeof(DDS_HEADER)];
+            // We may have a DXT10 additional header
+            if (dds_header->ddspf.fourCC == get_fourCC(DDS_FORMAT_DX10)) {
                 dds_size -= sizeof(DDS_HEADER_DXT10);
+                dds_payload = &dds_payload[sizeof(DDS_HEADER_DXT10)];
+            }
             tex.mipmaps = (uint8_t)dds_header->mipMapCount;
             // Are both width and height a power of two?
             bool po2_sizes = is_power_of_2(dds_header->width) && is_power_of_2(dds_header->height);
@@ -424,7 +429,7 @@ int main_utf8(int argc, char** argv)
                 goto out;
             }
             // Write extra data
-            if (tex.flags & G1T_TEX_EXTRA_FLAG) {
+            if (tex.flags & G1T_FLAG_EXTRA_CONTENT) {
                 JSON_Array* extra_data_array = json_object_get_array(texture_entry, "extra_data");
                 uint32_t extra_data_size = (uint32_t)(json_array_get_count(extra_data_array) + 1) * sizeof(uint32_t);
                 if (!po2_sizes && extra_data_size < 4 * sizeof(uint32_t)) {
@@ -506,16 +511,16 @@ int main_utf8(int argc, char** argv)
             }
 
             if (flip_image)
-                flip(bits_per_pixel, (uint8_t*)&dds_header[1], dds_size, dds_header->width);
+                flip(bits_per_pixel, dds_payload, dds_size, dds_header->width);
             if (sw != NO_SWIZZLE)
-                swizzle(bits_per_pixel, swizzle_op[sw].in, swizzle_op[sw].out, (uint8_t*)&dds_header[1], dds_size);
+                swizzle(bits_per_pixel, swizzle_op[sw].in, swizzle_op[sw].out, dds_payload, dds_size);
             if (tl != NO_TILING)
-                tile(bits_per_pixel, tl, dds_header->width, (uint8_t*)&dds_header[1], dds_size);
+                tile(bits_per_pixel, tl, dds_header->width, dds_payload, dds_size);
             if (tr != NO_TRANSFORM)
-                transform(bits_per_pixel, transform_op[tr], (uint8_t*)&dds_header[1], dds_size);
+                transform(bits_per_pixel, transform_op[tr], dds_payload, dds_size);
 
             // Write texture
-            if (fwrite(&dds_header[1], 1, dds_size, file) != dds_size) {
+            if (fwrite(dds_payload, 1, dds_size, file) != dds_size) {
                 fprintf(stderr, "ERROR: Can't write texture data\n");
                 goto out;
             }
@@ -585,7 +590,7 @@ int main_utf8(int argc, char** argv)
         char version[5];
         setbe32(version, hdr->version);
         version[4] = 0;
-        if (hdr->version >> 16 != 0x3030)
+        if (hdr->version >> 16 != (uint16_t)'00')
             fprintf(stderr, "WARNING: Potentially unsupported G1T version %s\n", version);
         if (hdr->extra_size != 0) {
             fprintf(stderr, "ERROR: Can't handle G1T files with extra content\n");
@@ -629,7 +634,7 @@ int main_utf8(int argc, char** argv)
             pos += sizeof(g1t_tex_header);
             uint32_t width = 1 << tex->dx;
             uint32_t height = 1 << tex->dy;
-            uint32_t extra_size = (tex->flags & G1T_TEX_EXTRA_FLAG) ? getle32(&buf[pos]) : 0;
+            uint32_t extra_size = (tex->flags & G1T_FLAG_EXTRA_CONTENT) ? getle32(&buf[pos]) : 0;
             // Non power-of-two width and height may be provided in the extra data
             if (extra_size >= 0x14) {
                 if (width == 1)
@@ -700,12 +705,12 @@ int main_utf8(int argc, char** argv)
                 fclose(dst);
                 continue;
             }
-            if (write_dds_header(dst, texture_format, width, height, tex->mipmaps) != 1) {
+            if (write_dds_header(dst, texture_format, width, height, tex->mipmaps, tex->flags) != 1) {
                 fprintf(stderr, "ERROR: Can't write DDS header\n");
                 fclose(dst);
                 continue;
             }
-            if (tex->flags & G1T_TEX_EXTRA_FLAG) {
+            if (tex->flags & G1T_FLAG_EXTRA_CONTENT) {
                 assert(pos + extra_size < g1t_size);
                 if ((extra_size < 8) || (extra_size % 4 != 0)) {
                     fprintf(stderr, "ERROR: Can't handle extra_data of size 0x%08x\n", extra_size);

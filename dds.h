@@ -273,7 +273,6 @@ static __inline uint32_t get_fourCC(int format)
     case DDS_FORMAT_BC4:
         return MAKEFOURCC('A', 'T', 'I', '1');
     case DDS_FORMAT_BC7:
-        return MAKEFOURCC('B', 'P', 'T', 'C');
     case DDS_FORMAT_DX10:
         return MAKEFOURCC('D', 'X', '1', '0');
     default:
