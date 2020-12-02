@@ -46,7 +46,8 @@ typedef struct {
 typedef struct {
     char     filename[128];
     uint32_t size;
-    uint8_t  key[20];
+    uint8_t  key[0x20];
+    uint32_t unknown0xa4;
     uint64_t data_offset;
     uint64_t flags;
 } pak_entry64;
@@ -55,7 +56,7 @@ typedef struct {
 static __inline void decode(uint8_t* a, uint8_t* k, uint32_t size)
 {
     for (uint32_t i = 0; i < size; i++)
-        a[i] ^= k[i % 20];
+        a[i] ^= k[i % 0x20];
 }
 
 static char* key_to_string(uint8_t* key)
@@ -94,7 +95,7 @@ int main_utf8(int argc, char** argv)
     pak_header hdr = { 0 };
     pak_entry64* entries64 = NULL;
     JSON_Value* json = NULL;
-    bool is_pak64 = false;
+    bool is_pak64 = true;
     bool list_only = (argc == 3) && (argv[1][0] == '-') && (argv[1][1] == 'l');
 
     if ((argc != 2) && !list_only) {
@@ -240,17 +241,17 @@ int main_utf8(int argc, char** argv)
         // adding the absolute value of the difference with last data_offset.
         // The sum that is closest to zero tells us if we are dealing with a
         // 32 or 64-bit PAK archive.
-        uint64_t sum[2] = { 0, 0 };
-        uint32_t val[2], last[2] = { 0, 0 };
-        for (uint32_t i = 0; i < min(hdr.nb_files, 64); i++) {
-            val[0] = ((pak_entry32*)entries64)[i].data_offset;
-            val[1] = (uint32_t)(entries64[i].data_offset >> 32);
-            for (int j = 0; j < 2; j++) {
-                sum[j] += (val[j] > last[j]) ? val[j] - last[j] : last[j] - val[j];
-                last[j] = val[j];
-            }
-        }
-        is_pak64 = (sum[0] > sum[1]);
+        //uint64_t sum[2] = { 0, 0 };
+        //uint32_t val[2], last[2] = { 0, 0 };
+        //for (uint32_t i = 0; i < min(hdr.nb_files, 64); i++) {
+        //    val[0] = ((pak_entry32*)entries64)[i].data_offset;
+        //    val[1] = (uint32_t)(entries64[i].data_offset >> 32);
+        //    for (int j = 0; j < 2; j++) {
+        //        sum[j] += (val[j] > last[j]) ? val[j] - last[j] : last[j] - val[j];
+        //        last[j] = val[j];
+        //    }
+        //}
+        //is_pak64 = (sum[0] > sum[1]);
         printf("Detected %s PAK format\n\n", is_pak64 ? "A18/64-bit" : "A17/32-bit");
 
         // Store the data we'll need to reconstruct the archive to a JSON file
